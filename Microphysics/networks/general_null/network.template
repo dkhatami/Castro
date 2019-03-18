@@ -16,7 +16,7 @@
 
 module actual_network
 
-  use bl_types
+  use amrex_fort_module, only : rt => amrex_real
 
   implicit none
 
@@ -24,23 +24,30 @@ module actual_network
   integer, parameter :: nspec_evolve = @@NSPEC@@
   integer, parameter :: naux =  @@NAUX@@
 
-  character (len=16), save :: spec_names(nspec) 
+  character (len=16), save :: spec_names(nspec)
   character (len= 5), save :: short_spec_names(nspec)
   character (len=16), save :: aux_names(naux)
   character (len= 5), save :: short_aux_names(naux)
 
-  double precision, save   :: aion(nspec), zion(nspec)
+  double precision, allocatable, save :: aion(:), zion(:)
 
   integer, parameter :: nrates = 1
   integer, parameter :: num_rate_groups = 1
 
+#ifdef AMREX_USE_CUDA
+  attributes(managed) :: aion, zion
+#endif
+
 contains
-  
+
   subroutine actual_network_init
 
     @@SPEC_NAMES@@
 
     @@SHORT_SPEC_NAMES@@
+
+    allocate(aion(nspec))
+    allocate(zion(nspec))
 
     @@AION@@
 
@@ -49,5 +56,15 @@ contains
     @@AUX_NAMES@@
 
   end subroutine actual_network_init
+
+  subroutine actual_network_finalize
+
+    implicit none
+
+    deallocate(aion)
+    deallocate(zion)
+
+  end subroutine actual_network_finalize
+
 
 end module actual_network

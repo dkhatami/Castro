@@ -1,11 +1,11 @@
-subroutine PROBINIT (init,name,namlen,problo,probhi)
+subroutine amrex_probinit (init,name,namlen,problo,probhi) bind(c)
 
-  use bl_error_module
-  use bl_constants_module
+  use amrex_error_module
+  use amrex_constants_module
   use probdata_module
-  use eos_module, only : gamma_const
+  use actual_eos_module, only : gamma_const
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   
   integer init, namlen
@@ -20,7 +20,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   integer, parameter :: maxlen = 256
   character probin*(maxlen)
 
-  if (namlen .gt. maxlen) call bl_error("probin file name too long")
+  if (namlen .gt. maxlen) call amrex_error("probin file name too long")
 
   do i = 1, namlen
      probin(i:i) = char(name(i))
@@ -71,7 +71,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   x_c2  = HALF*probhi(1)
   y_c2  = HALF*probhi(2) - r_0
   
-end subroutine PROBINIT
+end subroutine amrex_probinit
 
 
 ! ::: -----------------------------------------------------------
@@ -98,12 +98,12 @@ end subroutine PROBINIT
 subroutine ca_initdata(level,time,lo,hi,nscal, &
                        state,state_l1,state_l2,state_h1,state_h2, &
                        delta,xlo,xhi)
-  use bl_constants_module
+  use amrex_constants_module
   use probdata_module
-  use eos_module, only : gamma_const
+  use actual_eos_module, only : gamma_const
   use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS
   
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   
   integer level, nscal

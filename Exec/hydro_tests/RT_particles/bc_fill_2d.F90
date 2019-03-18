@@ -1,6 +1,7 @@
 module bc_fill_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_error_module
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   public
@@ -11,13 +12,13 @@ contains
                         domlo,domhi,delta,xlo,time,bc) bind(C)
 
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP
-    use eos_module, only : gamma_const
+    use actual_eos_module, only : gamma_const
     use probdata_module, only: p0_base
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer :: adv_l1,adv_l2,adv_h1,adv_h2
     integer :: bc(2,2,*)
@@ -36,12 +37,12 @@ contains
     do n=1,NVAR
        !        XLO
        if ( bc(1,1,n).eq.EXT_DIR .and. adv_l1.lt.domlo(1)) then
-          call bl_error('SHOULD NEVER GET HERE bc(1,1,n) .eq. EXT_DIR) ')
+          call amrex_error('SHOULD NEVER GET HERE bc(1,1,n) .eq. EXT_DIR) ')
        end if
 
        !        XHI
        if ( bc(1,2,n).eq.EXT_DIR .and. adv_h1.gt.domhi(1)) then
-          call bl_error('SHOULD NEVER GET HERE bc(1,2,n) .eq. EXT_DIR) ')
+          call amrex_error('SHOULD NEVER GET HERE bc(1,2,n) .eq. EXT_DIR) ')
        end if
 
        !        YLO
@@ -65,7 +66,7 @@ contains
 
        !        YHI
        if ( bc(2,2,n).eq.EXT_DIR .and. adv_h2.gt.domhi(2)) then
-          call bl_error('SHOULD NEVER GET HERE bc(2,2,n) .eq. EXT_DIR) ')
+          call amrex_error('SHOULD NEVER GET HERE bc(2,2,n) .eq. EXT_DIR) ')
        end if
 
     end do
@@ -77,10 +78,10 @@ contains
   subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
                         domlo,domhi,delta,xlo,time,bc) bind(C)
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer :: adv_l1,adv_l2,adv_h1,adv_h2
     integer :: bc(2,2,*)
@@ -97,22 +98,22 @@ contains
 
     ! XLO
     if ( bc(1,1,1).eq.EXT_DIR .and. adv_l1.lt.domlo(1)) then
-       call bl_error('SHOULD NEVER GET HERE bc(1,1,1) .eq. EXT_DIR) ')
+       call amrex_error('SHOULD NEVER GET HERE bc(1,1,1) .eq. EXT_DIR) ')
     end if
 
     ! XHI
     if ( bc(1,2,1).eq.EXT_DIR .and. adv_h1.lt.domhi(1)) then
-       call bl_error('SHOULD NEVER GET HERE bc(1,2,1) .eq. EXT_DIR) ')
+       call amrex_error('SHOULD NEVER GET HERE bc(1,2,1) .eq. EXT_DIR) ')
     end if
 
     ! YLO
     if ( bc(2,1,1).eq.EXT_DIR .and. adv_l2.lt.domlo(2)) then
-       call bl_error('SHOULD NEVER GET HERE bc(2,1,1) .eq. EXT_DIR) ')
+       call amrex_error('SHOULD NEVER GET HERE bc(2,1,1) .eq. EXT_DIR) ')
     end if
 
     ! YHI
     if ( bc(2,2,1).eq.EXT_DIR .and. adv_h2.gt.domhi(2)) then
-       call bl_error('SHOULD NEVER GET HERE bc(2,2,1) .eq. EXT_DIR) ')
+       call amrex_error('SHOULD NEVER GET HERE bc(2,2,1) .eq. EXT_DIR) ')
     end if
 
   end subroutine ca_denfill
@@ -124,10 +125,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -146,10 +147,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -168,10 +169,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -190,10 +191,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: phi_l1,phi_l2,phi_h1,phi_h2
     integer :: bc(2,2,*)

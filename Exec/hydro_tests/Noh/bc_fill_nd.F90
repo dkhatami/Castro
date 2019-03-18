@@ -1,6 +1,6 @@
 module bc_fill_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   public
@@ -12,19 +12,19 @@ contains
   
   subroutine ca_hypfill(adv,adv_lo,adv_hi,domlo,domhi,delta,xlo,time,bc) bind(C)
 
-    use bl_constants_module, only: ONE, TWO
+    use amrex_constants_module, only: ONE, TWO
     use meth_params_module, only: NVAR, URHO, UTEMP, UMX, UMZ, UEDEN, UEINT, UFS
     use prob_params_module, only: dim
     use castro_util_module, only: position
-    use eos_module, only: eos_input_rp, eos
+    use eos_module, only: eos
     use extern_probin_module, only: eos_gamma
-    use eos_type_module, only: eos_t
+    use eos_type_module, only: eos_t, eos_input_rp
     use network, only: nspec
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer          :: adv_lo(3),adv_hi(3)
     integer          :: bc(dim,2,*)
@@ -86,10 +86,10 @@ contains
 
     use prob_params_module, only: dim  
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer          :: adv_lo(3),adv_hi(3)
     integer          :: bc(dim,2,*)

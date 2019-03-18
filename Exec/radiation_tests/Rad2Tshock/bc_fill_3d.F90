@@ -1,6 +1,6 @@
 module bc_fill_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   public
@@ -14,13 +14,14 @@ contains
  
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UFX, UTEMP
     use network, only : nspec, naux
-    use eos_module
+    use eos_module, only : eos
+    use eos_type_module, only : eos_t, eos_input_rt
     use probdata_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     integer adv_l1,adv_l2,adv_l3,adv_h1,adv_h2,adv_h3
     integer bc(3,2,*)
     integer domlo(3), domhi(3)
@@ -119,9 +120,9 @@ contains
 
     use probdata_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     integer adv_l1,adv_l2,adv_l3,adv_h1,adv_h2,adv_h3
     integer bc(3,2,*)
     integer domlo(3), domhi(3)
@@ -167,10 +168,10 @@ contains
   subroutine ca_phigravfill(phi,phi_l1,phi_l2,phi_l3,phi_h1,phi_h2,phi_h3, &
                             domlo,domhi,delta,xlo,time,bc) bind(C, name="ca_phigravfill")
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer          :: phi_l1,phi_l2,phi_l3,phi_h1,phi_h2,phi_h3
     integer          :: bc(3,2,*)
@@ -192,9 +193,9 @@ contains
 
     use probdata_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     integer adv_l1,adv_l2,adv_l3,adv_h1,adv_h2,adv_h3
     integer bc(3,2,*)
     integer domlo(3), domhi(3)

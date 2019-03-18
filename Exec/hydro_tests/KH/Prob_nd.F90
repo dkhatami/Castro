@@ -1,12 +1,12 @@
-subroutine PROBINIT (init,name,namlen,problo,probhi)
+subroutine amrex_probinit (init,name,namlen,problo,probhi) bind(c)
 
    use probdata_module
-   use bl_constants_module
+   use amrex_constants_module
+   use amrex_error_module
    use fundamental_constants_module
    use meth_params_module, only: small_temp, small_pres, small_dens
-   use eos_module
    
-   use bl_fort_module, only : rt => c_real
+   use amrex_fort_module, only : rt => amrex_real
    implicit none
 
    integer :: init, namlen
@@ -26,14 +26,9 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
 
    ! Temporary storage variables in case we need to switch the primary and secondary.
 
-   integer :: ioproc
-
-   ! For outputting -- determine if we are the IO processor
-   call bl_pd_is_ioproc(ioproc)
-
    ! Build "probin" filename -- the name of file containing fortin namelist.
    if (namlen .gt. maxlen) then
-      call bl_error("ERROR: probin file name too long")
+      call amrex_error("ERROR: probin file name too long")
    end if
 
    do i = 1, namlen
@@ -63,7 +58,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
       pressure = 10.0
    endif
 
-end subroutine PROBINIT
+end subroutine amrex_probinit
 
 
 ! ::: -----------------------------------------------------------
@@ -91,15 +86,19 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
                        state,state_lo,state_hi, &
                        delta,xlo,xhi)
 
-  use probdata_module
-  use eos_module
-  use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UTEMP, &
+   use amrex_constants_module
+   use amrex_error_module
+
+   use eos_module, only : eos
+   use eos_type_module, only: eos_t, eos_input_rp
+   use network, only : nspec
+
+   use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UTEMP, &
        UEDEN, UEINT, UFS, UFA
-  use network, only : nspec
-  use bl_constants_module
-  use prob_params_module, only: problo, center, probhi
+   use probdata_module
+   use prob_params_module, only: problo, center, probhi
   
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   integer :: level, nscal
@@ -152,10 +151,10 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
   y1 = center(2) - (probhi(2) - problo(2)) * 0.25e0_rt
   y2 = center(2) + (probhi(2) - problo(2)) * 0.25e0_rt  
-  
+
   velz = 0.0
-  
-  !$OMP PARALLEL DO PRIVATE(i, j, k, xx, yy, zz, dens, velx, vely, velz, ramp, eos_state)
+
+  !$OMP PARALLEL DO PRIVATE(i, j, k, xx, yy, zz, dens, velx, vely, ramp, eos_state)
   do k = lo(3), hi(3)
      zz = xlo(3) + delta(3)*dble(k-lo(3)+HALF)
 
@@ -219,7 +218,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
               
            else
 
-              call bl_error("Error: This problem choice is undefined.")
+              call amrex_error("Error: This problem choice is undefined.")
 
            endif
 

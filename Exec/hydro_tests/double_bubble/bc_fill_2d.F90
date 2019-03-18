@@ -1,6 +1,6 @@
 module bc_fill_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   public
@@ -11,17 +11,18 @@ contains
        bind(C, name="ca_hypfill")
 
     use probdata_module
-    use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP
+    use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UTEMP
     use interpolate_module
     use eos_module
     use network, only: nspec
+    use amrex_constants_module, only : ZERO, HALF
 
     use model_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer adv_l1,adv_l2,adv_h1,adv_h2
     integer bc(2,2,*)
@@ -64,7 +65,8 @@ contains
           do i=domlo(1)-1,adv_l1,-1
 
              ! zero transverse momentum
-             adv(i,j,UMY) = 0.e0_rt
+             adv(i,j,UMY) = ZERO
+             adv(i,j,UMZ) = ZERO
 
              if (boundary_type .eq. 1) then
                 ! extrapolate normal momentum
@@ -73,14 +75,13 @@ contains
              else
                 ! zero normal momentum
                 ! permits pi to pass through boundary
-                adv(i,j,UMX) = 0.e0_rt
+                adv(i,j,UMX) = ZERO
              end if
 
              adv(i,j,URHO) = rho_model(j)
              adv(i,j,UFS:UFS-1+nspec) = adv(i,j,URHO)*xn_model(:)
              adv(i,j,UEINT) = e_model(j)*adv(i,j,URHO)
-             adv(i,j,UEDEN) = adv(i,j,UEINT) &
-                  + 0.5e0_rt*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/adv(i,j,URHO)
+             adv(i,j,UEDEN) = adv(i,j,UEINT) + HALF*sum(adv(i,j,UMX:UMZ)**2)/adv(i,j,URHO)
              adv(i,j,UTEMP) = T_model(j)
 
           end do
@@ -95,7 +96,8 @@ contains
           do i=domhi(1)+1,adv_h1
 
              ! zero transverse momentum
-             adv(i,j,UMY) = 0.e0_rt
+             adv(i,j,UMY) = ZERO
+             adv(i,j,UMZ) = ZERO
 
              if (boundary_type .eq. 1) then
                 ! extrapolate normal momentum
@@ -104,14 +106,13 @@ contains
              else
                 ! zero normal momentum
                 ! permits pi to pass through boundary
-                adv(i,j,UMX) = 0.e0_rt
+                adv(i,j,UMX) = ZERO
              end if
 
              adv(i,j,URHO) = rho_model(j)
              adv(i,j,UFS:UFS-1+nspec) = adv(i,j,URHO)*xn_model(:)
              adv(i,j,UEINT) = e_model(j)*adv(i,j,URHO)
-             adv(i,j,UEDEN) = adv(i,j,UEINT) &
-                  + 0.5e0_rt*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/adv(i,j,URHO)
+             adv(i,j,UEDEN) = adv(i,j,UEINT) + HALF*sum(adv(i,j,UMX:UMZ)**2)/adv(i,j,URHO)
              adv(i,j,UTEMP) = T_model(j)
 
           end do
@@ -127,7 +128,8 @@ contains
           do i=adv_l1,adv_h1
 
              ! zero transverse momentum
-             adv(i,j,UMX) = 0.e0_rt
+             adv(i,j,UMX) = ZERO
+             adv(i,j,UMZ) = ZERO
 
              if (boundary_type .eq. 1) then
                 ! extrapolate normal momentum
@@ -136,14 +138,13 @@ contains
              else
                 ! zero normal momentum
                 ! permits pi to pass through boundary
-                adv(i,j,UMY) = 0.e0_rt
+                adv(i,j,UMY) = ZERO
              end if
 
              adv(i,j,URHO) = rho_model(j)
              adv(i,j,UFS:UFS-1+nspec) = adv(i,j,URHO)*xn_model(:)
              adv(i,j,UEINT) = e_model(j)*adv(i,j,URHO)
-             adv(i,j,UEDEN) = adv(i,j,UEINT) &
-                  + 0.5e0_rt*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/adv(i,j,URHO)
+             adv(i,j,UEDEN) = adv(i,j,UEINT) + HALF*sum(adv(i,j,UMX:UMZ)**2)/adv(i,j,URHO)
              adv(i,j,UTEMP) = T_model(j)
 
           end do
@@ -156,7 +157,8 @@ contains
           do i=adv_l1,adv_h1
 
              ! zero transverse momentum
-             adv(i,j,UMX) = 0.e0_rt
+             adv(i,j,UMX) = ZERO
+             adv(i,j,UMZ) = ZERO
 
              if (boundary_type .eq. 1) then
                 ! extrapolate normal momentum
@@ -165,14 +167,14 @@ contains
              else
                 ! zero normal momentum
                 ! permits pi to pass through boundary
-                adv(i,j,UMY) = 0.e0_rt
+                adv(i,j,UMY) = ZERO
              end if
 
              adv(i,j,URHO) = rho_model(j)
              adv(i,j,UFS:UFS-1+nspec) = adv(i,j,URHO)*xn_model(:)
              adv(i,j,UEINT) = e_model(j)*adv(i,j,URHO)
              adv(i,j,UEDEN) = adv(i,j,UEINT) &
-                  + 0.5e0_rt*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/adv(i,j,URHO)
+                  + HALF*sum(adv(i,j,UMX:UMZ)**2)/adv(i,j,URHO)
              adv(i,j,UTEMP) = T_model(j)
 
           end do
@@ -192,10 +194,10 @@ contains
 
     use model_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer adv_l1,adv_l2,adv_h1,adv_h2
     integer bc(2,2,*)
@@ -289,9 +291,9 @@ contains
                           domlo,domhi,delta,xlo,time,bc) bind(C, name="ca_gravxfill")
 
     use probdata_module
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -310,10 +312,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -332,10 +334,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -353,10 +355,10 @@ contains
                             phi_h1,phi_h2,domlo,domhi,delta,xlo,time,bc) &
                             bind(C, name="ca_phigravfill")
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer          :: phi_l1,phi_l2,phi_h1,phi_h2
     integer          :: bc(2,2,*)

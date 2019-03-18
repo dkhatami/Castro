@@ -1,11 +1,10 @@
 
-subroutine PROBINIT (init,name,namlen,problo,probhi)
+subroutine amrex_probinit (init,name,namlen,problo,probhi) bind(c)
 
   use probdata_module
-  use network, only : network_init
-  use bl_error_module
+  use amrex_error_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   integer init, namlen
@@ -25,10 +24,8 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   parameter (maxlen=256)
   character probin*(maxlen)
   
-  call network_init()
-  
   if (namlen .gt. maxlen) then
-     call bl_error('probin file name too long')
+     call amrex_error('probin file name too long')
   end if
   
   do i = 1, namlen
@@ -62,7 +59,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   read(untin,*) npts_model
   read(untin,*) dummy
   if (npts_model > npts_max) then
-     call bl_error('npts_max in probdata.f90 is too small')
+     call amrex_error('npts_max in probdata.f90 is too small')
   end if
 
   do i = 1, npts_model
@@ -72,7 +69,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
 
   print *,'done reading model inputs'
   
-end subroutine PROBINIT
+end subroutine amrex_probinit
 
 ! ::: -----------------------------------------------------------
 ! ::: This routine is called at problem setup time and is used
@@ -101,11 +98,12 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   use probdata_module
   use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UFX, UTEMP
   use network, only : nspec, naux
-  use eos_module
+  use eos_module, only : eos
+  use eos_type_module, only : eos_t, eos_input_rt
   use interpolate_module
   use fundamental_constants_module, only: k_B, n_A
   
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   
   integer :: level, nscal
@@ -241,7 +239,7 @@ subroutine ca_initrad(level,time,lo,hi,nrad, &
   use rad_params_module, only : xnu
   use blackbody_module, only : BGroup
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   integer :: level, nrad
   integer :: lo(1), hi(1)

@@ -1,9 +1,9 @@
-subroutine probinit(init, name, namlen, problo, probhi)
+subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
   use probdata_module
-  use network, only : network_init
+  use amrex_fort_module, only : rt => amrex_real
+  use amrex_error_module, only: amrex_error
 
-  use bl_fort_module, only : rt => c_real
   implicit none
 
   integer init, namlen
@@ -16,14 +16,12 @@ subroutine probinit(init, name, namlen, problo, probhi)
   integer, parameter ::  maxlen = 256
   character probin*(maxlen)
 
-  if (namlen > maxlen) call bl_error("probin file name too long")
+  if (namlen > maxlen) call amrex_error("probin file name too long")
     
   do i = 1, namlen
      probin(i:i) = char(name(i))
   end do
 
-  call network_init()
-    
   ! read namelists -- this will override any defaults
   open(newunit=untin, file=probin(1:namlen), form='formatted', status='old')
   read(untin,fortin)
@@ -35,7 +33,7 @@ subroutine probinit(init, name, namlen, problo, probhi)
   ymin = problo(2)
   ymax = probhi(2)
   
-end subroutine probinit
+end subroutine amrex_probinit
 
 ! ::: -----------------------------------------------------------
 ! ::: This routine is called at problem setup time and is used
@@ -64,9 +62,10 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   use probdata_module
   use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UFX, UTEMP
   use network, only : nspec, naux
-  use eos_module
+  use eos_module, only : eos
+  use eos_type_module, only : eos_t, eos_input_rt
   
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   
   integer :: level, nscal
@@ -143,7 +142,7 @@ subroutine ca_initrad(level,time,lo,hi,nrad, &
   use rad_params_module, only : xnu
   use blackbody_module, only : BGroup
   
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
   integer :: level, nrad
   integer :: lo(2), hi(2)

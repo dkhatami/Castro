@@ -1,6 +1,7 @@
 module bc_fill_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_error_module
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   public
@@ -14,14 +15,15 @@ contains
     use probdata_module
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UTEMP, const_grav
     use interpolate_module
-    use eos_module
+    use eos_module, only : eos
+    use eos_type_module, only: eos_input_rt, eos_t
     use network, only: nspec
     use model_parser_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer adv_l1,adv_l2,adv_h1,adv_h2
     integer bc(2,2,*)
@@ -51,7 +53,7 @@ contains
        if ( bc(1,1,n).eq.EXT_DIR .and. adv_l1.lt.domlo(1)) then
 
           ! we are periodic in x -- we should never get here
-          call bl_error("ERROR: invalid BC in Prob_2d.f90")
+          call amrex_error("ERROR: invalid BC in Prob_2d.f90")
 
        end if
 
@@ -59,7 +61,7 @@ contains
        if ( bc(1,2,n).eq.EXT_DIR .and. adv_h1.gt.domhi(1)) then
 
           ! we are periodic in x -- we should never get here
-          call bl_error("ERROR: invalid BC in Prob_2d.f90")
+          call amrex_error("ERROR: invalid BC in Prob_2d.f90")
 
        end if
 
@@ -145,7 +147,7 @@ contains
 
                       enddo
 
-                      if (.not. converged_hse) call bl_error("ERROR: failure to converge in -Y BC")
+                      if (.not. converged_hse) call amrex_error("ERROR: failure to converge in -Y BC")
 
                    endif
 
@@ -254,12 +256,11 @@ contains
     use probdata_module
     use interpolate_module
     use model_parser_module
-    use bl_error_module
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
     
     integer adv_l1,adv_l2,adv_h1,adv_h2
     integer bc(2,2,*)
@@ -280,12 +281,12 @@ contains
 
     !     XLO
     if ( bc(1,1,1).eq.EXT_DIR .and. adv_l1.lt.domlo(1)) then
-       call bl_error("We shoundn't be here (xlo denfill)")
+       call amrex_error("We shouldn't be here (xlo denfill)")
     end if
 
     !     XHI
     if ( bc(1,2,1).eq.EXT_DIR .and. adv_h1.gt.domhi(1)) then
-       call bl_error("We shoundn't be here (xlo denfill)")
+       call amrex_error("We shouldn't be here (xlo denfill)")
     endif
 
 
@@ -319,10 +320,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -342,10 +343,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -365,10 +366,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: grav_l1,grav_l2,grav_h1,grav_h2
     integer :: bc(2,2,*)
@@ -388,10 +389,10 @@ contains
 
     use probdata_module
     
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
     
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer :: react_l1,react_l2,react_h1,react_h2
     integer :: bc(2,2,*)
@@ -408,10 +409,10 @@ contains
                             phi_h1,phi_h2,domlo,domhi,delta,xlo,time,bc) &
                             bind(C, name="ca_phigravfill")
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
-    include 'bc_types.fi'
+    include 'AMReX_bc_types.fi'
 
     integer          :: phi_l1,phi_l2,phi_h1,phi_h2
     integer          :: bc(2,2,*)

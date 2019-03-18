@@ -1,13 +1,13 @@
-   subroutine PROBINIT (init,name,namlen,problo,probhi)
+   subroutine amrex_probinit (init,name,namlen,problo,probhi) bind(c)
 
-     use bl_fort_module, only : rt => c_real
+     use amrex_fort_module, only : rt => amrex_real
      implicit none
 
      integer :: init, namlen
      integer :: name(namlen)
      real(rt)         :: problo(3), probhi(3)
 
-   end subroutine PROBINIT
+   end subroutine amrex_probinit
 
 
    ! ::: -----------------------------------------------------------
@@ -35,16 +35,16 @@
                           state,state_lo,state_hi, &
                           delta,xlo,xhi)
 
-     use eos_module, only: eos_input_rp, eos
-     use eos_type_module, only: eos_t
+     use eos_module, only: eos
+     use eos_type_module, only: eos_t, eos_input_rp
      use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UTEMP, &
                                     UEDEN, UEINT, UFS
      use network, only : nspec
-     use bl_constants_module, only: ZERO, HALF, ONE, TWO, M_PI
+     use amrex_constants_module, only: ZERO, HALF, ONE, TWO, M_PI
      use fundamental_constants_module, only: Gconst, M_solar
      use prob_params_module, only: center, dim
 
-     use bl_fort_module, only : rt => c_real
+     use amrex_fort_module, only : rt => amrex_real
      implicit none
 
      integer :: level, nscal

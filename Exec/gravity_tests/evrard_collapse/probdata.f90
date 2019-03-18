@@ -1,24 +1,24 @@
 module probdata_module
 
   ! Probin file
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   character (len=:), allocatable :: probin
 
   ! Determine if we are the I/O processor
   integer :: ioproc
 
   ! Mass and radius of the collapsing sphere
-  real(rt)         :: sphere_mass, sphere_radius
+  real(rt) :: sphere_mass, sphere_radius
 
   ! Smallest allowed mass fraction
-  real(rt)         :: smallx
+  real(rt) :: smallx
 
   ! Smallest allowed velocity on the grid
-  real(rt)         :: smallu
-  
+  real(rt) :: smallu
+
   ! Density of ambient gas around the star
-  real(rt)         :: ambient_density
-  
+  real(rt) :: ambient_density
+
 contains
 
   ! This routine calls all of the other subroutines at the beginning
@@ -26,10 +26,10 @@ contains
 
   subroutine initialize(name, namlen)
 
-    use bl_constants_module, only: ZERO
-    use bl_error_module, only: bl_error
+    use amrex_constants_module, only: ZERO
+    use amrex_error_module, only: amrex_error
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
     integer :: namlen, i
@@ -61,7 +61,7 @@ contains
 
   subroutine read_namelist
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
     implicit none
 
     integer :: untin
@@ -80,8 +80,7 @@ contains
 
     ! Read namelist to override the defaults
 
-    untin = 9 
-    open(untin,file=probin,form='formatted',status='old')
+    open(newunit=untin, file=probin, form='formatted', status='old')
     read(untin,fortin)
     close(unit=untin)
 
@@ -93,7 +92,8 @@ contains
 
   subroutine get_ioproc
 
-    use bl_fort_module, only : rt => c_real
+    use amrex_fort_module, only : rt => amrex_real
+
     implicit none
 
     ! For outputting -- determine if we are the IO processor
@@ -108,11 +108,11 @@ contains
   subroutine set_small
 
     use network, only: nspec
-    use eos_type_module, only: eos_t
-    use eos_module, only: eos_input_rt, eos
+    use eos_type_module, only: eos_t, eos_input_rt
+    use eos_module, only: eos
     use meth_params_module, only: small_temp, small_pres, small_dens, small_ener
+    use amrex_fort_module, only : rt => amrex_real
 
-    use bl_fort_module, only : rt => c_real
     implicit none
 
     type (eos_t) :: eos_state
@@ -123,7 +123,7 @@ contains
        eos_state % rho = small_dens
        eos_state % T   = small_temp
        eos_state % xn  = 1.0e0_rt / nspec
- 
+
        call eos(eos_input_rt, eos_state)
 
        small_pres = eos_state % p

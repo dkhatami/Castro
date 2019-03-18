@@ -3,7 +3,7 @@
 # walk through all of the Fortran files and convert any double
 # precision declarations to
 #
-#   real(c_real) :: x
+#   real(amrex_real) :: x
 
 import os
 import re
@@ -26,7 +26,7 @@ implno_re = re.compile(r"^(implicit\s+none)", re.IGNORECASE|re.DOTALL)
 use_re = re.compile(r"^(use)\s+(\w*)", re.IGNORECASE|re.DOTALL)
 
 # module include line to add
-mod_incl = "use bl_fort_module, only : rt => c_real"
+mod_incl = "use amrex_fort_module, only : rt => amrex_real"
 
 # new-style declaration
 new_decl = "real(rt)"
@@ -68,7 +68,10 @@ def main():
     # match declarations like "real*8"
     r4 = re.compile(r"(real\*8)", re.IGNORECASE|re.DOTALL)
 
-    regexs = [r1, r2, r3, r4]
+    # match declarations like "real (rt)"
+    r5 = re.compile(r"(real)\s*(\(\s*rt\s*\))", re.IGNORECASE|re.DOTALL)
+
+    regexs = [r1, r2, r3, r4, r5]
 
 
     # also we want to convert numeric constants that are of the form X.Y_dp_t, etc.
@@ -90,7 +93,7 @@ def main():
     for sf in sfiles:
 
         # the tricky part of the conversion is that we need to add the
-        # "use bl_fort_module" to the source in any program unit (or
+        # "use amrex_fort_module" to the source in any program unit (or
         # scope) that has double precision declarations.
 
         # read the file

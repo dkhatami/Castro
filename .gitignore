@@ -38,14 +38,31 @@ o/
 d/
 f/
 t/
-buildInfo.cpp
+tmp_build_dir/
+AMReX_buildInfo.cpp
 
 # These files are created at build time
-Exec/*/*/extern.f90
-Exec/*/*/actual_network.f90
-Exec/*/*/helm_table.dat
+Exec/**/extern.F90
+Exec/**/actual_network.F90
+Exec/**/helm_table.dat
+Exec/**/state_sizes.f90
+Exec/**/set_indices.F90
+Exec/**/set_conserved.H
+Exec/**/set_primitive.H
+Exec/**/set_godunov.H
 
 *.hack
 *.bak
 
 Backtrace.*
+
+sphinx_docs/build
+sphinx_docs/doxy_files
+sphinx_docs/class
+sphinx_docs/classlist.rst
+sphinx_docs/source/file/
+sphinx_docs/source/filelist.rst
+sphinx_docs/source/namespace/
+sphinx_docs/source/namespacelist.rst
+sphinx_docs/source/runtime_parameters.rst
+sphinx_docs/source/*_files.rst

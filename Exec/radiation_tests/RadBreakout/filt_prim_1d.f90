@@ -7,12 +7,13 @@ subroutine ca_filt_prim(lo, hi, &
 
   use probdata_module, only : filter_rhomax, filter_timemax
   use network, only : naux, nspec
-  use eos_module
+  use eos_module, only : eos
+  use eos_type_module, only : eos_t, eos_input_rt
   use meth_params_module, only : NVAR, URHO, UMX, UEDEN, UEINT, UTEMP, UFA, UFS, UFX, &
        small_temp, small_dens, nadv
   use filter_module
 
-  use bl_fort_module, only : rt => c_real
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   integer, intent(in) :: lo(1), hi(1), domlo(1), domhi(1), level

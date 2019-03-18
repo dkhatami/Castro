@@ -6,8 +6,8 @@ subroutine ca_deranalytic(a,a_l1,a_l2,a_h1,a_h2,ncomp_a, &
                           domhi,dx,xlo,time,dt,bc,level,grid_no) bind(C, name="ca_deranalytic")
 
   use prob_params_module, only: center, problo
-  use bl_fort_module, only : rt => c_real
-  use bl_constants_module, only : HALF
+  use amrex_fort_module, only : rt => amrex_real
+  use amrex_constants_module, only : HALF
   use prob_util_module, only: analytic
 
   implicit none

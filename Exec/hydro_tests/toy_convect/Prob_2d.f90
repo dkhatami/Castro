@@ -1,11 +1,10 @@
-subroutine PROBINIT (init,name,namlen,problo,probhi)
+subroutine amrex_probinit (init,name,namlen,problo,probhi) bind(c)
 
-  use parallel
   use probdata_module
   use model_parser_module
-  use bl_error_module
-
-  use bl_fort_module, only : rt => c_real
+  use amrex_error_module
+  use amrex_fort_module, only : rt => amrex_real
+  use amrex_paralleldescriptor_module, only: parallel_IOProcessor => amrex_pd_ioprocessor
   implicit none
 
   integer init, namlen
@@ -25,7 +24,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   ! Build "probin" filename from C++ land --
   ! the name of file containing fortin namelist.
 
-  if (namlen .gt. maxlen) call bl_error("probin file name too long")
+  if (namlen .gt. maxlen) call amrex_error("probin file name too long")
 
   do i = 1, namlen
      probin(i:i) = char(name(i))
@@ -72,7 +71,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
      xloc_vortices(i) = (dble(i-1) + 0.5e0_rt) * offset + problo(1)
   enddo
 
-end subroutine PROBINIT
+end subroutine amrex_probinit
 
 
 ! ::: -----------------------------------------------------------
@@ -103,11 +102,12 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   use probdata_module
   use interpolate_module
   use eos_module
+  use eos_type_module, only : eos_t, eos_input_rt
   use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UTEMP
   use network, only: nspec
   use model_parser_module
-
-  use bl_fort_module, only : rt => c_real
+  use amrex_constants_module, only : ZERO, HALF
+  use amrex_fort_module, only : rt => amrex_real
   implicit none
 
   integer level, nscal
@@ -124,7 +124,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   type (eos_t) :: eos_state
 
   do j = lo(2), hi(2)
-     y = xlo(2) + delta(2)*(dble(j-lo(2)) + 0.5e0_rt)
+     y = xlo(2) + delta(2)*(dble(j-lo(2)) + HALF)
 
      do i = lo(1), hi(1)
 
@@ -144,7 +144,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
      do i = lo(1), hi(1)
         eos_state%rho = state(i,j,URHO)
         eos_state%T = state(i,j,UTEMP)
-        eos_state%xn(:) = state(i,j,UFS:)
+        eos_state%xn(:) = state(i,j,UFS:UFS-1+nspec)
 
         call eos(eos_input_rt, eos_state)
 
@@ -174,13 +174,13 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   if (apply_vel_field) then
 
      do j = lo(2), hi(2)
-        y = xlo(2) + delta(2)*(dble(j-lo(2)) + 0.5e0_rt)
+        y = xlo(2) + delta(2)*(dble(j-lo(2)) + HALF)
         ydist = y - velpert_height_loc
 
         do i = lo(1), hi(1)
-           x = xlo(1) + delta(1)*(dble(i-lo(1)) + 0.5e0_rt)
+           x = xlo(1) + delta(1)*(dble(i-lo(1)) + HALF)
 
-           upert = 0.e0_rt
+           upert = ZERO
 
            ! loop over each vortex
            do vortex = 1, num_vortices
