@@ -1,10 +1,12 @@
 module probdata_module
 
       use amrex_fort_module, only : rt=>amrex_real
-      real(rt)          , save :: M_ej, E_ej, d, n, v_ej, T_ej, R_c
-      real(rt)			, save :: Mdot_w, v_w, T_w, rho_a, T_a, s
-      real(rt)			, save :: R_sh, M_sh, N_sh, f_sh, v_sh, T_sh
-      real(rt)          , save :: M_x, R_x0, R_x1
-      real(rt)          , save :: filter_rhomax, filter_timemax
-end module probdata_module
 
+      real(rt)          , save :: filter_rhomax, filter_timemax
+
+      real(rt)        , save :: m_0, r_0, v_0
+      real(rt)        , save :: eta, sigma, delt
+      real(rt)        , save :: M_csm, dR_csm, kap
+      real(rt)        , save :: f_a, TT_0, h_csm
+      real(rt)        , save :: t_0, rho_0, E_0, t_d
+end module probdata_module
