@@ -48,8 +48,8 @@ Castro::problem_post_timestep()
 
       std::cout << "Luminosity    =   " << lum_bol << "      erg/s    " << "\n";
 
-      lum_bol = 0.;
     }
+    lum_bol = 0.;
 }
 #endif
 
