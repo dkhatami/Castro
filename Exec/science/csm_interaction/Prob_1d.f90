@@ -13,9 +13,9 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       integer :: untin,i
 
       namelist /fortin/ m_0, r_0, v_0, &
-                        eta, sigma, delt, &
+                        eta, beta, delt, tau &
                         f_a, TT_0, &
-                        M_csm, dR_csm, kap, &
+                        M_csm, M_ej, dR_csm, kap, &
                         t_0, rho_0, E_0, &
                         filter_rhomax, filter_timemax
 
@@ -30,13 +30,14 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
       !namelist defaults
 
-      m_0 = 1.98e33_rt ! characteristic mass in g (M_ej)
+      m_0 = 1.98e33_rt ! characteristic mass in g (M_csm)
       r_0 = 1.e14_rt   ! characteristic radius in cm (R_csm)
-      v_0 = 1.e9_rt   ! characteristic velocity in cm/s (v_ej)
+      !v_0 = 1.e9_rt   ! characteristic velocity in cm/s (v_ej)
 
       eta = 1.e-2_rt ! ratio M_csm/M_ej
-      sigma = 1.e0_rt ! ratio t_0/t_d
+      beta = 1.e-1_rt ! = v_ej/c
       delt = 1.e0_rt ! ratio dR/R_csm
+      tau = 1.e2_rt ! csm optical depth
 
       f_a = 1.e-6_rt ! ratio of ambient to csm density
       TT_0 = 1.e2_rt ! ambient temperature
@@ -51,13 +52,16 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       read(untin,fortin)
       close(unit=untin)
 
+      v_0 = beta*2.998e10_rt
+      M_csm = m_0
+      M_ej = m_0/eta
+
       t_0 = r_0/v_0 !characteristic time
-      rho_0 = m_0/(FOUR3RD*M_PI*r_0*r_0*r_0) !characteristic density
+      rho_0 = M_ej/(FOUR3RD*M_PI*r_0*r_0*r_0) !characteristic density
       E_0 = m_0*v_0*v_0 ! characteristic energy
 
-      M_csm = eta*m_0
       dR_csm = delt*r_0
-      kap = delt*delt/(eta*sigma*sigma)*r_0*r_0*2.998e10_rt/(m_0*v_0)
+      kap = tau*r_0*r_0/m_0
 
       t_d = sqrt(kap*m_0/(v_0*2.998e10_rt))
 
