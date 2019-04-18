@@ -13,10 +13,10 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       integer :: untin,i
 
       namelist /fortin/ m_0, r_0, v_0, &
-                        eta, beta, delt, tau &
+                        eta, beta, delt, tau, &
                         f_a, TT_0, &
                         M_csm, M_ej, dR_csm, kap, &
-                        t_0, rho_0, E_0, &
+                        t_0, rho_0, E_0, h_csm, &
                         filter_rhomax, filter_timemax
 
 
@@ -61,7 +61,8 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       E_0 = m_0*v_0*v_0 ! characteristic energy
 
       dR_csm = delt*r_0
-      kap = tau*r_0*r_0/m_0
+      !kap = tau*r_0*r_0/m_0
+      kap = FOUR3RD*M_PI*tau*r_0*r_0/m_0/delt*((1.e0_rt+delt)**3.e0_rt-1.e0_rt)
 
       t_d = sqrt(kap*m_0/(v_0*2.998e10_rt))
 
