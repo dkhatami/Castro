@@ -17,7 +17,8 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
                         f_a, TT_0, &
                         M_csm, M_ej, dR_csm, kap, &
                         t_0, rho_0, E_0, h_csm, &
-                        filter_rhomax, filter_timemax
+                        filter_rhomax, filter_timemax, &
+                        n, d, s, f_r, tau_a
 
 
       integer, parameter :: maxlen = 256
@@ -39,10 +40,21 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       delt = 1.e0_rt ! ratio dR/R_csm
       tau = 1.e2_rt ! csm optical depth
 
-      f_a = 1.e-6_rt ! ratio of ambient to csm density
+      f_a = 1.e-3_rt ! ratio of maximum possible ambient to csm density
+                     ! this is only set if the optical depth param is too large
+                     ! to make sure the ambient density doesn't contribute to
+                     ! late-time LC in cases of small kappa
       TT_0 = 1.e2_rt ! ambient temperature
 
       h_csm = 1.e-1_rt ! smoothing length ratio h/R_csm
+
+      d = 0.e0_rt ! inner ejecta density profile power law
+      n = 10.e0_rt ! outer ejecta density profile power law
+      s = 0.e0_rt ! CSM density profile power law
+
+      f_r = 0.1e0_rt ! ejecta transition velocity coordinate
+
+      tau_a = 1.e-2_rt ! ambient density optical depth
 
       filter_rhomax = 1.e-99_rt
       filter_timemax = 0.e0_rt
@@ -62,7 +74,9 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
       dR_csm = delt*r_0
       !kap = tau*r_0*r_0/m_0
-      kap = FOUR3RD*M_PI*tau*r_0*r_0/m_0/delt*((1.e0_rt+delt)**3.e0_rt-1.e0_rt)
+      !kap = FOUR3RD*M_PI*tau*r_0*r_0/m_0/delt*((1.e0_rt+delt)**3.e0_rt-1.e0_rt)
+      kap = tau*r_0*r_0/m_0*4.e0_rt*M_PI*(1.e0_rt-s)/(3.e0_rt-s)
+      kap = kap*((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt)/((1.e0_rt+delt)**(1.e0_rt-s)-1.e0_rt)
 
       t_d = sqrt(kap*m_0/(v_0*2.998e10_rt))
 
@@ -96,8 +110,9 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
     real(rt)        :: xx, xxs, vol, dx_sub, vol_sub
 !    real(rt)        :: R_s, eta_r, eta_v, v_t, M_ch, rho_w
-    real(rt)        :: rho_ej, rho_csm, rho_o, rho_a
+    real(rt)        :: rho_ej, rho_csm, rho_o, rho_a, R_t
     real(rt)        :: rho, vel, T, rho_sub, vel_sub, T_sub
+    real(rt)        :: rho0_ej, rho0_csm
 !    real(rt)		:: h_c, h_ej
     integer :: i, ii
 
@@ -105,6 +120,11 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
 
     dx_sub = delta(1)/dble(nsub)
+
+    R_t = f_r*r_0
+
+
+
 
     ! eta_r = (n-3.e0_rt)*(3.e0_rt-d)/(n-d)/(4.e0_rt*M_PI)
     ! eta_v = sqrt(2.e0_rt*(5.e0_rt-d)*(n-5.e0_rt) &
@@ -150,18 +170,28 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
       ! rhoej = rho0 + 0.5e0_rt*(rho1-rho0)*(1.e0_rt+tanh((xxs-R_s)/h_ej))
 
-      rho_csm = M_csm/(FOUR3RD*M_PI)/((r_0+dR_csm)**3-r_0**3)
-      rho_a = f_a*rho_csm
+      rho0_ej = (n-3.e0_rt)*(3.e0_rt-d)/(4.e0_rt*M_PI*(n-d))*M_ej/(f_r*r_0)**3
+
+      rho0_csm = (3.e0_rt-s)/(4.e0_rt*M_PI)/((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt)*M_csm/r_0**3
+
+
+
+      rho_csm = rho0_csm*(xxs/r_0)**(-s)
+      rho_a = min(tau_a/(kap*xhi(1)),f_a*rho_csm)
       rho_o = rho_csm + 0.5e0_rt*(rho_a-rho_csm)*(1.e0_rt+tanh((xxs-(r_0+dR_csm))/(h_csm*r_0)))
 
-      if (xxs .lt. r_0) then
-          rho_sub = rho_0
+      if (xxs .lt. R_t) then
+          rho_sub = rho0_ej*(xxs/R_t)**(-d)
+          vel_sub = v_0*(xxs/r_0)
+          T_sub = TT_0
+      else if (xxs .lt. r_0) then
+          rho_sub = rho0_ej*(xxs/R_t)**(-n)
           vel_sub = v_0*(xxs/r_0)
           T_sub = TT_0
       else
           rho_sub = rho_o
-          T_sub = TT_0
           vel_sub = 0.e0_rt
+          T_sub = TT_0
       endif
      ! rho_sub = rhoej + 0.5e0_rt*(rhow-rhoej)*(1.e0_rt+tanh((xxs-R_c)/h_c))
 
