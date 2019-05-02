@@ -18,7 +18,7 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
                         M_csm, M_ej, dR_csm, kap, &
                         t_0, rho_0, E_0, h_csm, &
                         filter_rhomax, filter_timemax, &
-                        n, d, s, f_r, tau_a
+                        n, d, s, f_r, tau_a, pl_ej
 
 
       integer, parameter :: maxlen = 256
@@ -50,6 +50,7 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
       d = 0.e0_rt ! inner ejecta density profile power law
       n = 10.e0_rt ! outer ejecta density profile power law
+      pl_ej = -1.e0_rt ! whether or not to use power law ejecta prescription
       s = 0.e0_rt ! CSM density profile power law
 
       f_r = 0.1e0_rt ! ejecta transition velocity coordinate
@@ -170,7 +171,11 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
       ! rhoej = rho0 + 0.5e0_rt*(rho1-rho0)*(1.e0_rt+tanh((xxs-R_s)/h_ej))
 
-      rho0_ej = (n-3.e0_rt)*(3.e0_rt-d)/(4.e0_rt*M_PI*(n-d))*M_ej/(f_r*r_0)**3
+      if (pl_ej .gt. 0 ) then
+        rho0_ej = (n-3.e0_rt)*(3.e0_rt-d)/(4.e0_rt*M_PI*(n-d))*M_ej/(f_r*r_0)**3
+      else
+        rho0_ej = 3.e0_rt/(4.e0_rt*M_PI)*M_ej/r_0**3
+      endif
 
       rho0_csm = (3.e0_rt-s)/(4.e0_rt*M_PI)/((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt)*M_csm/r_0**3
 
@@ -181,11 +186,17 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
       rho_o = rho_csm + 0.5e0_rt*(rho_a-rho_csm)*(1.e0_rt+tanh((xxs-(r_0+dR_csm))/(h_csm*r_0)))
 
       if (xxs .lt. R_t) then
-          rho_sub = rho0_ej*(xxs/R_t)**(-d)
+          rho_sub = rho0_ej!*(xxs/R_t)**(-d)
+          if (pl_ej .gt. 0) then
+            rho_sub = rho_sub*(xxs/R_t)**(-d)
+          endif
           vel_sub = v_0*(xxs/r_0)
           T_sub = TT_0
       else if (xxs .lt. r_0) then
-          rho_sub = rho0_ej*(xxs/R_t)**(-n)
+          rho_sub = rho0_ej!*(xxs/R_t)**(-n)
+          if (pl_ej .gt. 0) then
+            rho_sub = rho_sub*(xxs/R_t)**(-n)
+          endif
           vel_sub = v_0*(xxs/r_0)
           T_sub = TT_0
       else

@@ -6,6 +6,7 @@ module probdata_module
 
       real(rt)        , save :: m_0, r_0, v_0
       real(rt)        , save :: n, d, s, f_r
+      real(rt)        , save :: pl_ej
       real(rt)        , save :: eta, beta, delt, tau
       real(rt)        , save :: tau_a
       real(rt)        , save :: M_csm, M_ej, dR_csm, kap
