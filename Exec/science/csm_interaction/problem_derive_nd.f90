@@ -70,8 +70,7 @@ subroutine ca_dercsm_mask(mask,mask_lo,mask_hi,ncomp_mask, &
        do i = lo(1),hi(1)
 
            if(u(i,j,k,2) > ZERO) then
-
-                 mask(i,j,k,1) = 1.e0_rt
+                 mask(i,j,k,1) = ONE
            endif
          enddo
       enddo
