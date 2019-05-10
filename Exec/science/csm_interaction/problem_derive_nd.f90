@@ -1,7 +1,7 @@
-subroutine ca_dercdmask(mask,mask_lo,mask_hi,ncomp_mask, &
+subroutine ca_dercd_mask(mask,mask_lo,mask_hi,ncomp_mask, &
                          u, u_lo, u_hi, ncomp_u, &
                          lo,hi,domlo,domhi, &
-                         dx,xlo,time,dt,bc,level,grid_no) bind(C,name='ca_dercdmask')
+                         dx,xlo,time,dt,bc,level,grid_no) bind(C,name='ca_dercd_mask')
 
 
     use amrex_constants_module
@@ -38,4 +38,4 @@ subroutine ca_dercdmask(mask,mask_lo,mask_hi,ncomp_mask, &
 
 
 
-end subroutine ca_dercdmask
+end subroutine ca_dercd_mask

@@ -90,26 +90,26 @@ Castro::bolometric_luminosity(Real time, Real& lum)
 }
 
 void
-Castro::shock_radius(Real& radius_cd)
+Castro::cd_shock_radius(Real time, Real& radius_cd)
 {
   const Real* dx = geom.CellSize();
 
 
   for (int lev = 0; lev <= parent->finestLevel(); lev++) {
 
-    //ca_set_amr_info(lev, -1, -1, -1.0, -1.0);
+    ca_set_amr_info(lev, -1, -1, -1.0, -1.0);
 
-    //Castro& c_lev = getLevel(lev);
+    Castro& c_lev = getLevel(lev);
+	auto mfcdmask = c_lev.derive("cd_mask",time,0);
 
-    MultiFab& Er = getLevel(lev).get_new_data(Rad_Type);
 
-    for(MFIter mfi(Er,true); mfi.isValid(); ++mfi)
+    for(MFIter mfi(*mfcdmask,true); mfi.isValid(); ++mfi)
     {
         const Box& box  = mfi.tilebox();
         const int* lo   = box.loVect();
         const int* hi   = box.hiVect();
-
-        cdshock(BL_TO_FORTRAN_3D(cmask),
+		FArrayBox& fabcdmask = (*mfcdmask)[mfi];
+        cdshock(BL_TO_FORTRAN_3D(fabcdmask),
                   ARLIM_3D(lo),ARLIM_3D(hi),
                   ZFILL(dx),&time,
                   &radius_cd);

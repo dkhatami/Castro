@@ -9,7 +9,7 @@ COMP	  = gnu
 
 USE_MPI   = TRUE
 USE_OMP   = TRUE
-
+USE_SHOCK_VAR = TRUE
 
 USE_RAD   = TRUE
 USE_NEUTRINO = FALSE
@@ -17,9 +17,7 @@ USE_NEUTRINO = FALSE
 CASTRO_HOME  = ../../..
 Opacity_dir := csm
 EOS_dir		 := gamma_law_general
-
-NETWORK_DIR := general_null
-GENERAL_NET_INPUTS = $(CASTRO_HOME)/Microphysics/networks/$(NETWORK_DIR)/gammalaw.net
+NETWORK_DIR := csm
 Bpack := ./Make.package
 Blocs := .
 
