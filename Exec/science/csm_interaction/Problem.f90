@@ -93,3 +93,44 @@ subroutine bolometric_lum(rad_state,s_lo,s_hi, &
 
 
 end subroutine bolometric_lum
+
+
+subroutine cdshock(rmask, r_lo, r_hi, lo, hi, dx, time, r_cd) bind(C,name='cdshock')
+
+  use amrex_constants_module, only: ZERO
+  use castro_util_module, only : position
+
+  implicit none
+
+
+  integer         ,  intent(in) :: r_lo(3), r_hi(3)
+
+  double precision,  intent(in) :: rmask(r_lo(1):r_hi(1),r_lo(2):r_hi(2),r_lo(3):r_hi(3))
+
+  integer         ,  intent(in) :: lo(3), hi(3)
+
+  double precision,  intent(in) :: dx, time
+
+  double precision,  intent(inout) :: r_cd
+
+  integer :: i,j,k
+
+  double precision :: r(3)
+
+  do k = lo(3),hi(3)
+    do j = lo(2),hi(2)
+      do i = lo(1),hi(1)
+
+        r = position(i,j,k)
+
+        if (cdmask(i,j,k) > ZERO) then
+          r_cd = r(1)
+        endif
+
+      enddo
+    enddo
+  enddo
+
+
+
+end subroutine cdshock

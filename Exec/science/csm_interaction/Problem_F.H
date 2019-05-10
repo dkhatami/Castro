@@ -16,4 +16,8 @@ extern "C"
       const amrex::Real* dx, const amrex::Real* time,
       amrex::Real* lum_bol);
 
+  void cdshock(BL_FORT_FAB_ARG_3D(cmask),
+                const int* lo, const int* hi,
+                const amrex::Real* dx, const amrex::Real* time,
+                amrex::Real* r_cd);
 }

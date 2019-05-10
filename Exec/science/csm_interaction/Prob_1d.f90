@@ -233,6 +233,14 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
 
      state(i,UEDEN) = state(i,UEINT) + 0.5e0_rt*state(i,UMX)**2/state(i,URHO)
      !state(i,UFS:UFS-1+nspec) = 0.e0_rt
+
+     if (xx .lt. r_0) then
+        state(i,UFX) = 1.e0_rt*rho
+        state(i,UFX+1)= 0.e0_rt
+    else
+      state(i,UFX) = 0.e0_rt
+      state(i,UFX+1) = 1.e0_rt*rho
+    endif
      state(i,UFS) = state(i,URHO)
      !state(i,UFX) = state(i,URHO)
      !state(i,UFX+1) = state(i,URHO)
