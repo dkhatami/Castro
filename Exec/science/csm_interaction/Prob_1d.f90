@@ -237,9 +237,15 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
      if (xx .lt. r_0) then
         state(i,UFX) = 1.e0_rt*rho
         state(i,UFX+1)= 0.e0_rt
-    else
+        state(i,UFX+2) = 0.e0_rt
+    else if (xx .lt. r_0+dR_csm) then
       state(i,UFX) = 0.e0_rt
       state(i,UFX+1) = 1.e0_rt*rho
+      state(i,UFX+2) = 0.e0_rt
+    else
+      state(i,UFX) = 0.e0_rt
+      state(i,UFX+1) = 0.e0_rt
+      state(i,UFX+2) = 1.e0_rt*rho
     endif
      state(i,UFS) = state(i,URHO)
      !state(i,UFX) = state(i,URHO)

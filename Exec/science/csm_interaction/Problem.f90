@@ -134,3 +134,44 @@ subroutine cdshock(cd_mask, r_lo, r_hi, lo, hi, dx, time, r_cd) bind(C,name='cds
 
 
 end subroutine cdshock
+
+
+subroutine csm_edge(csm_mask, r_lo, r_hi, lo, hi, dx, time, r_csm) bind(C,name='csm_edge')
+
+  use amrex_constants_module, only: HALF
+  use castro_util_module, only : position
+
+  implicit none
+
+
+  integer         ,  intent(in) :: r_lo(3), r_hi(3)
+
+  double precision,  intent(in) :: csm_mask(r_lo(1):r_hi(1),r_lo(2):r_hi(2),r_lo(3):r_hi(3))
+
+  integer         ,  intent(in) :: lo(3), hi(3)
+
+  double precision,  intent(in) :: dx, time
+
+  double precision,  intent(inout) :: r_csm
+
+  integer :: i,j,k
+
+  double precision :: r(3)
+
+  do k = lo(3),hi(3)
+    do j = lo(2),hi(2)
+      do i = lo(1),hi(1)
+
+        r = position(i,j,k)
+
+        if (csm_mask(i,j,k) > HALF) then
+          r_csm = r(1)
+        endif
+
+      enddo
+    enddo
+  enddo
+
+
+
+end subroutine csm_edge

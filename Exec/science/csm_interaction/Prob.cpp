@@ -12,6 +12,7 @@ using namespace amrex;
 
 Real Castro::lum_bol = 0.0;
 Real Castro::radius_cd  = 0.0;
+Real Castro::radius_csm = 0.0;
 
 #ifdef DO_PROBLEM_POST_TIMESTEP
 void
@@ -26,9 +27,12 @@ Castro::problem_post_timestep()
 
     bolometric_luminosity(time,lum_bol);
     cd_shock_radius(time,radius_cd);
+    csm_edge_radius(time,radius_csm);
+
 
     ParallelDescriptor::ReduceRealMax(lum_bol);
     ParallelDescriptor::ReduceRealMax(radius_cd);
+    ParallelDescriptor::ReduceRealMax(radius_csm);
 
 
     if(amrex::ParallelDescriptor::IOProcessor()){
@@ -47,15 +51,19 @@ Castro::problem_post_timestep()
       log << std::scientific;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << lum_bol;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_cd;
+      log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_csm;
 
       log << std::endl;
 
       std::cout << "Luminosity    =   " << lum_bol << "      erg/s    " << "\n";
       std::cout << "Shock Radius    =   " << radius_cd << "      cm    " << "\n";
+      std::cout << "Outer CSM Radius  =  " << radius_csm << "    cm     " << "\n";
 
     }
+
     lum_bol = 0.;
     radius_cd = 0.;
+    radius_csm = 0.;
 
 }
 #endif
@@ -113,6 +121,36 @@ Castro::cd_shock_radius(Real time, Real& radius_cd)
                   ARLIM_3D(lo),ARLIM_3D(hi),
                   ZFILL(dx),&time,
                   &radius_cd);
+
+            }
+  }
+}
+
+
+void
+Castro::csm_edge_radius(Real time, Real& radius_csm)
+{
+  const Real* dx = geom.CellSize();
+
+
+  for (int lev = 0; lev <= parent->finestLevel(); lev++) {
+
+    ca_set_amr_info(lev, -1, -1, -1.0, -1.0);
+
+    Castro& c_lev = getLevel(lev);
+	auto mfcsmmask = c_lev.derive("csm_mask",time,0);
+
+
+    for(MFIter mfi(*mfcsmmask,true); mfi.isValid(); ++mfi)
+    {
+        const Box& box  = mfi.tilebox();
+        const int* lo   = box.loVect();
+        const int* hi   = box.hiVect();
+		FArrayBox& fabcsmmask = (*mfcsmmask)[mfi];
+        csm_edge(BL_TO_FORTRAN_3D(fabcsmmask),
+                  ARLIM_3D(lo),ARLIM_3D(hi),
+                  ZFILL(dx),&time,
+                  &radius_csm);
 
             }
   }

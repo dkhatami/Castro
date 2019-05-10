@@ -20,4 +20,9 @@ extern "C"
                 const int* lo, const int* hi,
                 const amrex::Real* dx, const amrex::Real* time,
                 amrex::Real* r_cd);
+
+  void csm_edge(BL_FORT_FAB_ARG_3D(csm_mask),
+                const int* lo, const int* hi,
+                const amrex::Real* dx, const amrex::Real* time,
+                amrex::Real* r_csm);
 }
