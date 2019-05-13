@@ -4,6 +4,7 @@
 
 
 void bolometric_luminosity (amrex::Real time, amrex::Real& lum_bol);
+void fs_lum(amrex::Real time, amrex::Real& lum_fs);
 
 
 #ifdef DO_PROBLEM_POST_TIMESTEP
@@ -16,3 +17,4 @@ void csm_edge_radius(amrex::Real time, amrex::Real& radius_csm);
 static amrex::Real lum_bol;
 static amrex::Real radius_cd;
 static amrex::Real radius_csm;
+static amrex::Real lum_fs;
