@@ -31,16 +31,19 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
       !namelist defaults
 
-      m_0 = 1.98e33_rt ! characteristic mass in g (M_csm)
-      r_0 = 1.e14_rt   ! characteristic radius in cm (R_csm)
+      !m_0 = 1.98e33_rt ! characteristic mass in g (M_csm)
+      !r_0 = 1.e14_rt   ! characteristic radius in cm (R_csm)
       !v_0 = 1.e9_rt   ! characteristic velocity in cm/s (v_ej)
 
-      eta = 1.e-2_rt ! ratio M_csm/M_ej
-      beta = 1.e-1_rt ! = v_ej/c
-      delt = 1.e0_rt ! ratio dR/R_csm
-      tau = 1.e2_rt ! csm optical depth
+      kap = 0.2e0_rt ! characteristic opacity (cm^2/g)
+      M_ej = 3.e0_rt*1.989e33_rt ! ejecta mass (g)
 
-      f_a = 1.e-3_rt ! ratio of maximum possible ambient to csm density
+      eta = 1.e-2_rt ! ratio M_csm/M_ej
+      beta = 3.333333e-2_rt ! = v_ej/c
+      delt = 1.e0_rt ! ratio dR/R_csm
+      tau = 1.e1_rt ! csm optical depth
+
+      f_a = 1.e-4_rt ! ratio of maximum possible ambient to csm density
                      ! this is only set if the optical depth param is too large
                      ! to make sure the ambient density doesn't contribute to
                      ! late-time LC in cases of small kappa
@@ -55,7 +58,7 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
 
       f_r = 0.1e0_rt ! ejecta transition velocity coordinate
 
-      tau_a = 1.e-2_rt ! ambient density optical depth
+      tau_a = 1.e-3_rt ! ambient density optical depth
 
       filter_rhomax = 1.e-99_rt
       filter_timemax = 0.e0_rt
@@ -66,9 +69,11 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       close(unit=untin)
 
       v_0 = beta*2.998e10_rt
-      M_csm = m_0
-      M_ej = m_0/eta
-
+      M_csm = eta*M_ej
+      m_0 = M_csm
+        
+      r_0 = sqrt(kap*eta*M_ej/tau)*sqrt((3.e0_rt-s)/(4.e0_rt*M_PI*(1.e0_rt-s)))
+      r_0 = r_0*sqrt(((1.e0_rt+delt)**(1.e0_rt-s)-1.e0_rt)/((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt))
       t_0 = r_0/v_0 !characteristic time
       rho_0 = M_ej/(FOUR3RD*M_PI*r_0*r_0*r_0) !characteristic density
       E_0 = m_0*v_0*v_0 ! characteristic energy
@@ -76,8 +81,8 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(c)
       dR_csm = delt*r_0
       !kap = tau*r_0*r_0/m_0
       !kap = FOUR3RD*M_PI*tau*r_0*r_0/m_0/delt*((1.e0_rt+delt)**3.e0_rt-1.e0_rt)
-      kap = tau*r_0*r_0/m_0*4.e0_rt*M_PI*(1.e0_rt-s)/(3.e0_rt-s)
-      kap = kap*((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt)/((1.e0_rt+delt)**(1.e0_rt-s)-1.e0_rt)
+      !kap = tau*r_0*r_0/m_0*4.e0_rt*M_PI*(1.e0_rt-s)/(3.e0_rt-s)
+      !kap = kap*((1.e0_rt+delt)**(3.e0_rt-s)-1.e0_rt)/((1.e0_rt+delt)**(1.e0_rt-s)-1.e0_rt)
 
       t_d = sqrt(kap*m_0/(v_0*2.998e10_rt))
 
