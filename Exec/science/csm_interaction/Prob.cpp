@@ -14,6 +14,7 @@ Real Castro::lum_bol = 0.0;
 Real Castro::radius_cd  = 0.0;
 Real Castro::radius_csm = 0.0;
 Real Castro::lum_fs = 0.0;
+Real Castro::lum_rs = 0.0;
 
 #ifdef DO_PROBLEM_POST_TIMESTEP
 void
@@ -28,6 +29,7 @@ Castro::problem_post_timestep()
 
     bolometric_luminosity(time,lum_bol);
     fs_lum(time,lum_fs);
+    rs_lum(time,lum_rs);
     cd_shock_radius(time,radius_cd);
     csm_edge_radius(time,radius_csm);
 
@@ -36,6 +38,7 @@ Castro::problem_post_timestep()
     ParallelDescriptor::ReduceRealMax(radius_cd);
     ParallelDescriptor::ReduceRealMax(radius_csm);
     ParallelDescriptor::ReduceRealMax(lum_fs);
+    ParallelDescriptor::ReduceRealMax(lum_rs);
 
 
     if(amrex::ParallelDescriptor::IOProcessor()){
@@ -54,13 +57,15 @@ Castro::problem_post_timestep()
       log << std::scientific;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << lum_bol;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << lum_fs;
+      log << std::setw(datwidth) << std::setprecision(dataprecision) << lum_rs;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_cd;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_csm;
 
       log << std::endl;
 
       std::cout << "Bolometric Luminosity    =   " << lum_bol << "      erg/s    " << "\n";
-      std::cout << "Shock Luminosity    =   " << lum_fs << "      erg/s    " << "\n";
+      std::cout << "Forward Shock Luminosity    =   " << lum_fs << "      erg/s    " << "\n";
+      std::cout << "Reverse Shock Luminosity    =   " << lum_rs << "      erg/s    " << "\n";
       std::cout << "Shock Radius    =   " << radius_cd << "      cm    " << "\n";
       std::cout << "Outer CSM Radius  =  " << radius_csm << "    cm     " << "\n";
 
@@ -70,6 +75,7 @@ Castro::problem_post_timestep()
     lum_fs = 0.;
     radius_cd = 0.;
     radius_csm = 0.;
+    lum_rs = 0.;
 
 }
 #endif
@@ -104,14 +110,13 @@ Castro::bolometric_luminosity(Real time, Real& lum)
 }
 
 void
-Castro::lum_fs(Real time, Real& lum)
+Castro::fs_lum(Real time, Real& lum)
 {
   const Real* dx = geom.CellSize();
 
   for(int lev = 0; lev <= parent -> finestLevel(); lev++)
   {
     Castro& c_lev = getLevel(lev);
-    MultiFab& Er = c_lev.get_new_data(Rad_Type);
     MultiFab& Es = c_lev.get_new_data(State_Type);
     auto mfcdmask = c_lev.derive("cd_mask",time,0);
 
@@ -121,9 +126,32 @@ Castro::lum_fs(Real time, Real& lum)
       const int* lo = box.loVect();
       const int * hi = box.hiVect();
       FArrayBox& fabcdmask = (*mfcdmask)[mfi];
-      lum_fs(BL_TO_FORTRAN_3D(Er[mfi],
-      BL_TO_FORTRAN_3D(fabcdmask),
+      lum_fs(BL_TO_FORTRAN_3D(fabcdmask),
       BL_TO_FORTRAN_3D(Es[mfi]),
+      ARLIM_3D(lo),ARLIM_3D(hi),
+      ZFILL(dx),&time,&lum));
+    }
+
+  }
+}
+
+void
+Castro::rs_lum(Real time, Real& lum)
+{
+  const Real* dx = geom.CellSize();
+
+  for(int lev = 0; lev <= parent -> finestLevel(); lev++)
+  {
+    Castro& c_lev = getLevel(lev);
+    MultiFab& Es = c_lev.get_new_data(State_Type);
+
+    for(MFIter mfi(*mfcdmask,true);mfi.isValid();++mfi)
+    {
+      const Box& box = mfi.tilebox();
+      const int* lo = box.loVect();
+      const int * hi = box.hiVect();
+      FArrayBox& fabcdmask = (*mfcdmask)[mfi];
+      lum_rs(BL_TO_FORTRAN_3D(Es[mfi]),
       ARLIM_3D(lo),ARLIM_3D(hi),
       ZFILL(dx),&time,&lum));
     }

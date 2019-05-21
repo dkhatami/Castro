@@ -21,12 +21,16 @@ extern "C"
                 const amrex::Real* dx, const amrex::Real* time,
                 amrex::Real* r_cd);
 
-  void lum_fs(BL_FORT_FAB_ARG_3D(rad_state),
-              BL_FORT_FAB_ARG_3D(cd_mask),
+  void lum_fs(BL_FORT_FAB_ARG_3D(cd_mask),
               BL_FORT_FAB_ARG_3D(state),
               const int* lo, const int* hi,
               const amrex::Real* dx, const amrex::Real* time,
               amrex::Real* lum_fs);
+
+  void lum_rs(BL_FORT_FAB_ARG_3D(state),
+              const int* lo, const int* hi,
+              const amrex::Real* dx, const amrex::Real* time,
+              amrex::Real* lum_rs);
 
   void csm_edge(BL_FORT_FAB_ARG_3D(csm_mask),
                 const int* lo, const int* hi,

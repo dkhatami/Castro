@@ -95,14 +95,13 @@ subroutine bolometric_lum(rad_state,s_lo,s_hi, &
 end subroutine bolometric_lum
 
 
-subroutine lum_fs(rad_state,cd_mask,state,s_lo,s_hi, &
+subroutine lum_fs(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
                           lo, hi, dx, time, &
                           lum) bind(C)
     use castro_util_module, only : position
-    use amrex_constants_module, only: four, M_PI
+    use amrex_constants_module
     use fundamental_constants_module, only: c_light
-    use rad_params_module, only : ngroups
-    use meth_params_module, only: NVAR, QRAD, URHO
+    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
     use prob_params_module, only : probhi
     use probdata_module, only : kap
     use amrex_fort_module, only : rt => amrex_real
@@ -111,9 +110,8 @@ subroutine lum_fs(rad_state,cd_mask,state,s_lo,s_hi, &
     integer :: lo(3), hi(3)
     integer :: s_lo(3), s_hi(3)
     real(rt)        :: xlo(1), xhi(1), time, delta(1)
-    real(rt)        :: rad_state(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3),0:ngroups-1)
     real(rt)        :: state(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3),NVAR)
-    double precision,  intent(in) :: cd_mask(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3))
+    double precision,  intent(in) :: cd_mask(cd_lo(1):cd_hi(1),cd_lo(2):cd_hi(2),cd_lo(3):cd_hi(3))
     real(rt)        :: lum
 
     ! Local variables
@@ -123,7 +121,7 @@ subroutine lum_fs(rad_state,cd_mask,state,s_lo,s_hi, &
     real(rt)         :: lfac
 
 
-    lfac = four*M_PI*c_light/3.e0_rt/kap
+    lfac = 9.e0_rt*M_PI/8.e0_rt
 
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
@@ -132,9 +130,10 @@ subroutine lum_fs(rad_state,cd_mask,state,s_lo,s_hi, &
              r = position(i,j,k)
 
 
-              if (cd_mask(i,j,k) > ZERO) then
-               lum = lfac*r(1)*r(1)/state(i,j,k,URHO)*(rad_state(i+1,j,k,0)-rad_state(i-1,j,k,0))/(2.e0_rt*dx)
-             endif
+             if (cd_mask(i,j,k) > ZERO) then
+              lum = lfac*r(1)*r(1)*state(i+1,j,k,UMX)**3/state(i+1,j,k,URHO)**2
+              lum = abs(lum)
+            endif
 
 
           enddo
@@ -144,7 +143,56 @@ subroutine lum_fs(rad_state,cd_mask,state,s_lo,s_hi, &
 
 
 
-end subroutine bolometric_lum
+end subroutine lum_fs
+
+
+subroutine lum_rs(state,s_lo,s_hi, &
+                          lo, hi, dx, time, &
+                          lum) bind(C)
+    use castro_util_module, only : position
+    use amrex_constants_module, only: four, M_PI
+    use fundamental_constants_module, only: c_light
+    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
+    use prob_params_module, only : probhi
+    use probdata_module, only : kap
+    use amrex_fort_module, only : rt => amrex_real
+    implicit none
+
+    integer :: lo(3), hi(3)
+    integer :: s_lo(3), s_hi(3)
+    real(rt)        :: xlo(1), xhi(1), time, delta(1)
+    real(rt)        :: state(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3),NVAR)
+    real(rt)        :: lum
+
+    ! Local variables
+
+    integer :: i, j, k
+    real(rt)         :: r(3), xx, dx
+    real(rt)         :: lfac
+
+
+    lfac = 9.e0_rt*M_PI/8.e0_rt
+
+    do k = lo(3), hi(3)
+       do j = lo(2), hi(2)
+          do i = lo(1), hi(1)
+
+             r = position(i,j,k)
+
+             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS)/state(i,j,k,URHO) > HALF) then
+              lum = lfac*r(1)*r(1)*(state(i-1,j,k,UMX)/state(i-1,j,k,URHO)-state(i+1,j,k,UMX)/state(i+1,j,k,URHO))**3*state(i,j,k,URHO)
+              lum = abs(lum)
+            endif
+
+
+          enddo
+       enddo
+    enddo
+
+
+
+
+end subroutine lum_rs
 
 
 subroutine cdshock(cd_mask, r_lo, r_hi, lo, hi, dx, time, r_cd) bind(C,name='cdshock')
