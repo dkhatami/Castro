@@ -126,10 +126,10 @@ Castro::fs_lum(Real time, Real& lum)
       const int* lo = box.loVect();
       const int * hi = box.hiVect();
       FArrayBox& fabcdmask = (*mfcdmask)[mfi];
-      lum_fs(BL_TO_FORTRAN_3D(fabcdmask),
+      lum_fs_shock(BL_TO_FORTRAN_3D(fabcdmask),
       BL_TO_FORTRAN_3D(Es[mfi]),
       ARLIM_3D(lo),ARLIM_3D(hi),
-      ZFILL(dx),&time,&lum));
+      ZFILL(dx),&time,&lum);
     }
 
   }
@@ -144,16 +144,16 @@ Castro::rs_lum(Real time, Real& lum)
   {
     Castro& c_lev = getLevel(lev);
     MultiFab& Es = c_lev.get_new_data(State_Type);
-
+	auto mfcdmask = c_lev.derive("cd_mask",time,0);
     for(MFIter mfi(*mfcdmask,true);mfi.isValid();++mfi)
     {
       const Box& box = mfi.tilebox();
       const int* lo = box.loVect();
       const int * hi = box.hiVect();
       FArrayBox& fabcdmask = (*mfcdmask)[mfi];
-      lum_rs(BL_TO_FORTRAN_3D(Es[mfi]),
+      lum_rs_shock(BL_TO_FORTRAN_3D(Es[mfi]),
       ARLIM_3D(lo),ARLIM_3D(hi),
-      ZFILL(dx),&time,&lum));
+      ZFILL(dx),&time,&lum);
     }
 
   }

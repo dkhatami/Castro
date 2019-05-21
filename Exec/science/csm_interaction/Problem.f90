@@ -95,7 +95,7 @@ subroutine bolometric_lum(rad_state,s_lo,s_hi, &
 end subroutine bolometric_lum
 
 
-subroutine lum_fs(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
+subroutine lum_fs_shock(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
                           lo, hi, dx, time, &
                           lum) bind(C)
     use castro_util_module, only : position
@@ -108,7 +108,7 @@ subroutine lum_fs(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
     implicit none
 
     integer :: lo(3), hi(3)
-    integer :: s_lo(3), s_hi(3)
+    integer :: s_lo(3), s_hi(3), cd_lo(3), cd_hi(3)
     real(rt)        :: xlo(1), xhi(1), time, delta(1)
     real(rt)        :: state(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3),NVAR)
     double precision,  intent(in) :: cd_mask(cd_lo(1):cd_hi(1),cd_lo(2):cd_hi(2),cd_lo(3):cd_hi(3))
@@ -143,14 +143,14 @@ subroutine lum_fs(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
 
 
 
-end subroutine lum_fs
+end subroutine lum_fs_shock
 
 
-subroutine lum_rs(state,s_lo,s_hi, &
+subroutine lum_rs_shock(state,s_lo,s_hi, &
                           lo, hi, dx, time, &
                           lum) bind(C)
     use castro_util_module, only : position
-    use amrex_constants_module, only: four, M_PI
+    use amrex_constants_module
     use fundamental_constants_module, only: c_light
     use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
     use prob_params_module, only : probhi
@@ -192,7 +192,7 @@ subroutine lum_rs(state,s_lo,s_hi, &
 
 
 
-end subroutine lum_rs
+end subroutine lum_rs_shock
 
 
 subroutine cdshock(cd_mask, r_lo, r_hi, lo, hi, dx, time, r_cd) bind(C,name='cdshock')
