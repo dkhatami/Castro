@@ -33,6 +33,7 @@ Castro::problem_post_timestep()
     rs_lum(time,lum_rs);
     cd_shock_radius(time,radius_cd);
     csm_edge_radius(time,radius_csm);
+    reverse_shock_radius(time,radius_rs);
 
 
     ParallelDescriptor::ReduceRealMax(lum_bol);
@@ -40,6 +41,7 @@ Castro::problem_post_timestep()
     ParallelDescriptor::ReduceRealMax(radius_csm);
     ParallelDescriptor::ReduceRealMax(lum_fs);
     ParallelDescriptor::ReduceRealMax(lum_rs);
+    ParallelDescriptor::ReduceRealMax(radius_rs);
 
 
     if(amrex::ParallelDescriptor::IOProcessor()){
@@ -67,7 +69,8 @@ Castro::problem_post_timestep()
       std::cout << "Bolometric Luminosity    =   " << lum_bol << "      erg/s    " << "\n";
       std::cout << "Forward Shock Luminosity    =   " << lum_fs << "      erg/s    " << "\n";
       std::cout << "Reverse Shock Luminosity    =   " << lum_rs << "      erg/s    " << "\n";
-      std::cout << "Shock Radius    =   " << radius_cd << "      cm    " << "\n";
+      std::cout << "Forward Shock Radius    =   " << radius_cd << "      cm    " << "\n";
+      std::cout << "Reverse Shock Radius    =   " << radius_rs << "      cm    " << "\n";
       std::cout << "Outer CSM Radius  =  " << radius_csm << "    cm     " << "\n";
 
     }
@@ -77,6 +80,7 @@ Castro::problem_post_timestep()
     radius_cd = 0.;
     radius_csm = 0.;
     lum_rs = 0.;
+    radius_rs = 0.;
 
 }
 #endif
@@ -215,6 +219,36 @@ Castro::csm_edge_radius(Real time, Real& radius_csm)
                   ARLIM_3D(lo),ARLIM_3D(hi),
                   ZFILL(dx),&time,
                   &radius_csm);
+
+            }
+  }
+}
+
+
+void
+Castro::reverse_shock_radius(Real time, Real& radius_rs)
+{
+  const Real* dx = geom.CellSize();
+
+
+  for (int lev = 0; lev <= parent->finestLevel(); lev++) {
+
+    ca_set_amr_info(lev, -1, -1, -1.0, -1.0);
+
+    Castro& c_lev = getLevel(lev);
+	  auto mfcsmmask = c_lev.derive("csm_mask",time,0);
+    MultiFab& Es = c_lev.get_new_data(State_Type);
+
+
+    for(MFIter mfi(*mfcsmmask,true); mfi.isValid(); ++mfi)
+    {
+        const Box& box  = mfi.tilebox();
+        const int* lo   = box.loVect();
+        const int* hi   = box.hiVect();
+        csm_edge(BL_TO_FORTRAN_3D(Es[mfi]),
+                  ARLIM_3D(lo),ARLIM_3D(hi),
+                  ZFILL(dx),&time,
+                  &radius_rs);
 
             }
   }

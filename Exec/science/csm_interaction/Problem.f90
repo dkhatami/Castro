@@ -275,3 +275,46 @@ subroutine csm_edge(csm_mask, r_lo, r_hi, lo, hi, dx, time, r_csm) bind(C,name='
 
 
 end subroutine csm_edge
+
+
+
+subroutine rs_radius(state, s_lo, s_hi, lo, hi, dx, time, r_rs) bind(C,name='rs_radius')
+
+  use amrex_constants_module, only: ZERO
+  use castro_util_module, only : position
+  use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
+  use amrex_fort_module, only : rt => amrex_real
+  implicit none
+
+
+  integer         ,  intent(in) :: s_lo(3), s_hi(3)
+
+  double precision,  intent(in) :: state(s_lo(1):s_hi(1),s_lo(2):s_hi(2),s_lo(3):s_hi(3),NVAR)
+
+  integer         ,  intent(in) :: lo(3), hi(3)
+
+  double precision,  intent(in) :: dx, time
+
+  double precision,  intent(inout) :: r_rs
+
+  integer :: i,j,k
+
+  double precision :: r(3)
+
+  do k = lo(3),hi(3)
+    do j = lo(2),hi(2)
+      do i = lo(1),hi(1)
+
+        r = position(i,j,k)
+
+        if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS)/state(i,j,k,URHO) > 0.9e0_rt) then
+          r_rs = r(1)
+        endif
+
+      enddo
+    enddo
+  enddo
+
+
+
+end subroutine rs_radius
