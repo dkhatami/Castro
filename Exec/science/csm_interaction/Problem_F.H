@@ -36,4 +36,9 @@ extern "C"
                 const int* lo, const int* hi,
                 const amrex::Real* dx, const amrex::Real* time,
                 amrex::Real* r_csm);
+
+  void rs_radius(BL_FORT_FAB_ARG_3D(state),
+                 const int* lo, const int* hi,
+                 const amrex::Real* dx, const amrex::Real* time,
+                 amrex::Real* r_rs);
 }

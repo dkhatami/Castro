@@ -11,6 +11,7 @@ void rs_lum(amrex::Real time, amrex::Real& lum_rs);
 #ifdef DO_PROBLEM_POST_TIMESTEP
 void problem_post_timestep();
 void cd_shock_radius(amrex::Real time, amrex::Real& radius_cd);
+void reverse_shock_radius(amrex::Real time, amrex::Real& radius_rs);
 void csm_edge_radius(amrex::Real time, amrex::Real& radius_csm);
 
 #endif
