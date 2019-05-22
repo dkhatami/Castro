@@ -130,8 +130,8 @@ subroutine lum_fs_shock(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
              r = position(i,j,k)
 
 
-             if (cd_mask(i,j,k) > ZERO) then
-              lum = lfac*r(1)*r(1)*state(i+1,j,k,UMX)**3/state(i+1,j,k,URHO)**2
+             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS+1)/state(i,j,k,URHO) > HALF) then
+              lum = lfac*r(1)*r(1)*(state(i+2,j,k,UMX)/state(i+2,j,k,URHO)-state(i-2,j,k,UMX)/state(i-2,j,k,URHO))**3*state(i+2,j,k,URHO)
               lum = abs(lum)
             endif
 
@@ -180,7 +180,7 @@ subroutine lum_rs_shock(state,s_lo,s_hi, &
              r = position(i,j,k)
 
              if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS)/state(i,j,k,URHO) > HALF) then
-              lum = lfac*r(1)*r(1)*(state(i-1,j,k,UMX)/state(i-1,j,k,URHO)-state(i+1,j,k,UMX)/state(i+1,j,k,URHO))**3*state(i,j,k,URHO)
+              lum = lfac*r(1)*r(1)*(state(i-2,j,k,UMX)/state(i-2,j,k,URHO)-state(i+2,j,k,UMX)/state(i+2,j,k,URHO))**3*state(i,j,k,URHO)
               lum = abs(lum)
             endif
 

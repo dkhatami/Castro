@@ -13,6 +13,7 @@ using namespace amrex;
 Real Castro::lum_bol = 0.0;
 Real Castro::radius_cd  = 0.0;
 Real Castro::radius_csm = 0.0;
+Real Castro::radius_rs = 0.0;
 Real Castro::lum_fs = 0.0;
 Real Castro::lum_rs = 0.0;
 
