@@ -63,6 +63,7 @@ Castro::problem_post_timestep()
       log << std::setw(datwidth) << std::setprecision(dataprecision) << lum_rs;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_cd;
       log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_csm;
+      log << std::setw(datwidth) << std::setprecision(dataprecision) << radius_rs;
 
       log << std::endl;
 
