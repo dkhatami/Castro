@@ -28,7 +28,7 @@ subroutine ca_dercd_mask(mask,mask_lo,mask_hi,ncomp_mask, &
 
            if(u(i,j,k,6) > ZERO) then
 
-                 if(u(i,j,k,7)/u(i,j,k,1) > HALF) then
+                 if(u(i,j,k,8)/u(i,j,k,1) > HALF) then
                    mask(i,j,k,1) = ONE
              endif
            endif

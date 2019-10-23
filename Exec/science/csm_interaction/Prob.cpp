@@ -37,11 +37,11 @@ Castro::problem_post_timestep()
 
 
     ParallelDescriptor::ReduceRealMax(lum_bol);
-    ParallelDescriptor::ReduceRealMax(radius_cd);
+    ParallelDescriptor::ReduceRealMin(radius_cd);
     ParallelDescriptor::ReduceRealMax(radius_csm);
     ParallelDescriptor::ReduceRealMax(lum_fs);
     ParallelDescriptor::ReduceRealMax(lum_rs);
-    ParallelDescriptor::ReduceRealMax(radius_rs);
+    ParallelDescriptor::ReduceRealMin(radius_rs);
 
 
     if(amrex::ParallelDescriptor::IOProcessor()){
@@ -78,10 +78,10 @@ Castro::problem_post_timestep()
 
     lum_bol = 0.;
     lum_fs = 0.;
-    radius_cd = 0.;
+    radius_cd = 1e99;
     radius_csm = 0.;
     lum_rs = 0.;
-    radius_rs = 0.;
+    radius_rs = 1e99;
 
 }
 #endif
@@ -246,7 +246,7 @@ Castro::reverse_shock_radius(Real time, Real& radius_rs)
         const Box& box  = mfi.tilebox();
         const int* lo   = box.loVect();
         const int* hi   = box.hiVect();
-        csm_edge(BL_TO_FORTRAN_3D(Es[mfi]),
+        rs_radius(BL_TO_FORTRAN_3D(Es[mfi]),
                   ARLIM_3D(lo),ARLIM_3D(hi),
                   ZFILL(dx),&time,
                   &radius_rs);

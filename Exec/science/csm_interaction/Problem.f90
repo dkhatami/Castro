@@ -101,7 +101,7 @@ subroutine lum_fs_shock(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
     use castro_util_module, only : position
     use amrex_constants_module
     use fundamental_constants_module, only: c_light
-    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
+    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFX
     use prob_params_module, only : probhi
     use probdata_module, only : kap
     use amrex_fort_module, only : rt => amrex_real
@@ -130,7 +130,7 @@ subroutine lum_fs_shock(cd_mask,cd_lo,cd_hi,state,s_lo,s_hi, &
              r = position(i,j,k)
 
 
-             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS+1)/state(i,j,k,URHO) > HALF) then
+             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFX+1)/state(i,j,k,URHO) > HALF) then
               lum = lfac*r(1)*r(1)*(state(i+2,j,k,UMX)/state(i+2,j,k,URHO)-state(i-2,j,k,UMX)/state(i-2,j,k,URHO))**3*state(i+2,j,k,URHO)
               lum = abs(lum)
             endif
@@ -152,7 +152,7 @@ subroutine lum_rs_shock(state,s_lo,s_hi, &
     use castro_util_module, only : position
     use amrex_constants_module
     use fundamental_constants_module, only: c_light
-    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
+    use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFX
     use prob_params_module, only : probhi
     use probdata_module, only : kap
     use amrex_fort_module, only : rt => amrex_real
@@ -179,7 +179,7 @@ subroutine lum_rs_shock(state,s_lo,s_hi, &
 
              r = position(i,j,k)
 
-             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS)/state(i,j,k,URHO) > HALF) then
+             if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFX)/state(i,j,k,URHO) > HALF) then
               lum = lfac*r(1)*r(1)*(state(i-2,j,k,UMX)/state(i-2,j,k,URHO)-state(i+2,j,k,UMX)/state(i+2,j,k,URHO))**3*state(i,j,k,URHO)
               lum = abs(lum)
             endif
@@ -282,7 +282,7 @@ subroutine rs_radius(state, s_lo, s_hi, lo, hi, dx, time, r_rs) bind(C,name='rs_
 
   use amrex_constants_module, only: ZERO
   use castro_util_module, only : position
-  use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFS
+  use meth_params_module, only: NVAR, QRAD, URHO, UMX, USHK, UFX
   use amrex_fort_module, only : rt => amrex_real
   implicit none
 
@@ -307,7 +307,7 @@ subroutine rs_radius(state, s_lo, s_hi, lo, hi, dx, time, r_rs) bind(C,name='rs_
 
         r = position(i,j,k)
 
-        if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFS)/state(i,j,k,URHO) > 0.9e0_rt) then
+        if (state(i,j,k,USHK) > ZERO .and. state(i,j,k,UFX)/state(i,j,k,URHO) > 0.9e0_rt) then
           r_rs = r(1)
         endif
 

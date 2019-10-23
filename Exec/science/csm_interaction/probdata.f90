@@ -11,5 +11,8 @@ module probdata_module
       real(rt)        , save :: tau_a
       real(rt)        , save :: M_csm, M_ej, dR_csm, kap
       real(rt)        , save :: f_a, TT_0, h_csm
-      real(rt)        , save :: t_0, rho_0, E_0, t_d
+      real(rt)        , save :: t_0, rho_0, E_0, t_d,v_max
+      real(rt)        , save :: use_Trec, Trec, dT_rec
+      real(rt)        , save :: rho_w, dR_w, eps
+      real(rt)        , save :: p, fm_bo, ft_bo, xi_bo
 end module probdata_module
