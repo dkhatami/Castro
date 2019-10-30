@@ -43,6 +43,8 @@ Castro::problem_post_timestep()
     ParallelDescriptor::ReduceRealMax(lum_rs);
     ParallelDescriptor::ReduceRealMin(radius_rs);
 
+    integ_optical_depth(time);
+
 
     if(amrex::ParallelDescriptor::IOProcessor()){
 
@@ -253,4 +255,101 @@ Castro::reverse_shock_radius(Real time, Real& radius_rs)
 
             }
   }
+}
+
+void
+Castro::integ_optical_depth(Real time){
+
+
+  const Real* dx = geom.CellSize();
+
+  for (int lev = 0; lev <= parent->finestLevel(); lev++) {
+
+    ca_set_amr_info(lev, -1, -1, -1.0, -1.0);
+
+
+    Castro& c_lev = getLevel(lev);
+
+    BoxArray ba = c_lev.BoxArray();
+
+    long num_grids = ba.size();
+
+    struct GidLo{
+      long gid;
+      int lo;
+      Real exclusive_sum;
+
+
+    GidLo(long id, int smallend) : gid(id), lo(smallend), exclusive_sum(0.0) {};
+
+    bool operator<(const GidLo& other) const
+    {
+      return lo > other.lo;
+    }
+
+
+  };
+
+
+  Vector<GidLo> grids;
+
+  for(long i=0; i < num_grids; ++i){
+    grids.emplace_back(i,ba[i].smallEnd(0),1);
+  }
+
+  std::sort(grids.begin(),grids.end());
+
+  Vector<long>grid_inv(num_grids);
+  for(long i = 0; i < num_grids; ++i) grid_inv[grids[i].gid] = i;
+
+  Vector<Real> prefix_sums(num_grids,0.0);
+
+
+
+	  auto mfdtau = c_lev.derive("dtau",time,0);
+    auto mftaur = c_lev.derive("taur",time,0);
+
+    for(MFIter mfi(*mfdtau); mfi.isValid(); ++mfi)
+    {
+        long gidi = mfi.index();
+        const Box& box  = mfi.validbox();
+        const int* lo   = box.loVect();
+        const int* hi   = box.hiVect();
+        auto dtau_fab = mfdtau.array(mfi);
+        auto dtau_psum_fab = mftaur.array(mfi);
+
+
+        Real fab_prefix_sum = 0.0;
+        for (int k = hi.z; k >= lo.z; --k) {
+        for (int j = hi.y; j >= lo.y; --j) {
+        for (int i = hi.x; i >= lo.x; --i) {
+
+          fab_prefix_sum += dtau_fab(i,j,k);
+          dtau_psum_fab(i,j,k) = fab_prefix_sum;
+
+        }
+      }
+    }
+
+    prefix_sums[gidi] = fab_prefix_sum;
+
+            }
+
+
+            ParallelDescriptor::ReduceRealSum(pefix_sums.dataPtr(),num_grids);
+
+
+        for(long i = 1; i < num_grids; ++i){
+          grids[i].exclusive_sum = grids[i-1].exclusive_sum + prefix_sums[grid_ind[i-1]];
+        }
+
+
+        for(MFIter mfi(*mftaur);mfi.isValid();++mfi)
+        {
+          long gidi = mfi.index();
+          auto dtau_psum_fab = mftaur[mfi];
+          dtau_psum_fab.plus(grids[grid_inv[gidi]].exclusive_sum,0,1);
+        }
+  }
+
 }
