@@ -1,0 +1,119 @@
+# ------------------  INPUTS TO MAIN PROGRAM  -------------------
+max_step = 100000000
+stop_time = 5e6
+# PROBLEM SIZE & GEOMETRY
+geometry.is_periodic = 0 
+geometry.coord_sys   = 2  # 0 => cart, 1 => RZ  2=>spherical
+geometry.prob_lo     =  1.e13
+geometry.prob_hi     =  4.e15
+amr.n_cell           = 4096
+
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+# 0 = Interior           3 = Symmetry
+# 1 = Inflow             4 = SlipWall
+# 2 = Outflow            5 = NoSlipWall
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+castro.lo_bc       =  3 
+castro.hi_bc       =  2 
+
+
+# WHICH PHYSICS
+castro.do_hydro = 1
+castro.use_retry = 1
+castro.do_react = 0
+castro.do_grav = 0
+castro.allow_negative_energy = 0
+castro.small_temp = 100
+castro.do_reflux = 1
+castro.small_dens = 1.e-19
+castro.small_press = 1.e-40
+
+# TIME STEP CONTROL
+castro.cfl            = 0.5    # cfl number for hyperbolic system
+castro.init_shrink    = 0.1     # scale back initial timestep
+castro.change_max     = 1.1     # max time step growth
+castro.dt_cutoff      = 1.e-4  # level 0 timestep below which we halt
+castro.initial_dt = 1.e-3
+#castro.fixed_dt = 1.e3
+# DIAGNOSTICS & VERBOSITY
+castro.sum_interval   = 1       # timesteps between computing mass
+castro.v              = 1       # verbosity in Castro.cpp
+amr.v                 = 1       # verbosity in Amr.cpp
+#amr.grid_log        = grdlog  # name of grid logging file
+
+# REFINEMENT / REGRIDDING 
+amr.max_level       = 0 # maximum level number allowed
+#amr.max_level       = 1       # maximum level number allowed
+amr.ref_ratio       = 2 # refinement ratio
+amr.regrid_int      = 2 # how often to regrid
+amr.blocking_factor = 8       # block factor in grid generation
+amr.max_grid_size   = 2048
+amr.n_error_buf     = 2 # number of buffer cells in error est
+amr.grid_eff		= 0.7
+amr.subcycling_mode = None
+# CHECKPOINT FILES
+amr.check_file      = chk        # root name of checkpoint file
+amr.check_per      = 1e5        # number of timesteps between checkpoints
+
+# PLOTFILES
+amr.plot_file       = plt        # root name of plotfile
+amr.plot_per        = 7200        # number of timesteps between plotfiles
+amr.derive_plot_vars = ALL #density xmom ymom zmom eden Temp pressure  # these variables appear in the plotfile
+amr.plot_vars = ALL
+#PROBIN FILENAME
+amr.probin_file = probin
+
+amr.data_log = integrated_quantities.dat bolcurve.dat
+radiation.plot_com_flux = 0
+radiation.plot_lab_flux = 1
+radiation.plot_lambda = 0
+radiation.update_planck = 0
+radiation.update_rosseland = 0
+castro.do_radiation = 1
+radiation.SolverType = 6
+radiation.comoving = 1
+radiation.reltol = 1.e-10
+radiation.abstol = 0.0
+radiation.maxiter = 10000
+
+radiation.matter_update_type = 0
+
+radiation.limiter = 32
+
+radiation.update_limiter = -1000
+
+radiation.closure = 3
+
+radiation.v = -1
+
+radiation.lo_bc = 102
+radiation.hi_bc = 105
+
+radiation.lo_bcflag = 1
+radiation.hi_bcflag = 0
+radiation.nGroups = 64
+radiation.lowestGroupHz = 1e13
+radiation.highestGroupHz = 1e18
+radiation.lo_bcval = 0 
+radiation.hi_bcval = 0 
+radiation.do_real_eos = 1
+radiation.use_opacity_table_module = 1
+radiation.maxiter = 1000
+radiation.delta_temp = 10.0
+radsolve.level_solver_flag = 0
+radsolve.reltol = 1.e-11
+radsolve.abstol = 0.0
+radsolve.maxiter = 10
+
+radsolve.v = -1
+
+DistributionMapping.strategy = KNAPSACK
+
+
+
+#radiation.filter_lambda_T = 3
+#radiation.filter_lambda_S = 2
+
+#radiation.filter_prim_int = 3
+#radiation.filter_prim_T = 3
+#radiation.filter_prim_S = 2
