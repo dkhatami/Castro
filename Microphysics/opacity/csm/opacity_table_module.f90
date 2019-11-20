@@ -27,15 +27,28 @@ contains
     double precision, intent(in) :: rho, temp, rhoYe, nu
     double precision, intent(out) :: kp, kr
 
-  !  double precision, parameter :: Ksc = kap ! Thomson scattering
-    double precision, parameter :: fac = 1.d-3 ! Planck mean is assumed to be fac*Ksc
+    double precision :: Ksc ! Thomson scattering
+    double precision, parameter :: fac_kr=1.d-2
+    double precision :: fac_kp
 
-    if (get_planck_mean) then
-       kp = rho*kap * fac
+
+    if (get_Planck_mean) then
+       if(use_Trec .gt. 0) then
+          fac_kp = eps + 0.5*(eps-1.0)*(1.+tanh((temp-Trec)/dT_rec))
+          Ksc = kap*fac_kp + 0.5*(kap*fac_kp-fac_kr*kap)*(1.+tanh((temp-Trec)/dT_rec))
+       else
+         Ksc = kap*eps
+       endif
+       kp = rho*Ksc
     end if
 
     if (get_Rosseland_mean) then
-       kr = rho*kap
+      if(use_Trec .gt. 0) then
+         Ksc = kap + 0.5*(kap-fac_kr*kap)*(1.+tanh((temp-Trec)/dT_rec))
+      else
+         Ksc = kap
+      endif
+       kr = rho*Ksc
     end if
 
   end subroutine get_opacities
