@@ -68,7 +68,7 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(C,name="amre
       pl_ej = -1.e0_rt ! whether or not to use power law ejecta prescription
       s = 0.e0_rt ! CSM density profile power law
 
-      f_r = 0.1e0_rt ! ejecta transition velocity coordinate
+      f_r = 0.3333e0_rt ! ejecta transition velocity coordinate
 
       tau_a = 1.e-3_rt ! ambient density optical depth
 
@@ -88,7 +88,7 @@ subroutine amrex_probinit (init, name, namlen, problo, probhi) bind(C,name="amre
       read(untin,fortin)
       close(unit=untin)
 
-      v_0 = beta*2.998e10_rt
+      v_0 = beta*2.998e10_rt/f_r
       M_csm = eta*M_ej
       m_0 = M_csm
 
