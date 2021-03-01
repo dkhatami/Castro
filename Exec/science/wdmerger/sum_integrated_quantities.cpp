@@ -10,16 +10,20 @@
 #include <AMReX_ParallelDescriptor.H>
 
 #include <Problem.H>
-#include <Problem_F.H>
 
 #include <Gravity.H>
 #include <Gravity_F.H>
+
+#include <wdmerger_data.H>
 
 using amrex::Real;
 
 void
 Castro::sum_integrated_quantities ()
 {
+    using namespace wdmerger;
+    using namespace problem;
+
     if (level > 0) return;
 
     bool local_flag = true;
@@ -53,25 +57,14 @@ Castro::sum_integrated_quantities ()
     Real total_energy         = 0.0;
     Real total_E_grid         = 0.0;
 
-    // Rotation frequency.
-
-    Real omega[3] = { 0.0 };
-
-    get_omega_vec(omega, time);
-
     // Mass transfer rate
 
-    Real mdot = 0.5 * (std::abs(mdot_p) + std::abs(mdot_s));
+    Real mdot = 0.5 * (std::abs(mdot_P) + std::abs(mdot_S));
 
     // Center of mass of the system.
 
     Real com[3]       = { 0.0 };
     Real com_vel[3]   = { 0.0 };
-
-    // Stellar masses.
-
-    Real mass_p       = 0.0;
-    Real mass_s       = 0.0;
 
     // Distance between the WDs.
 
@@ -83,46 +76,17 @@ Castro::sum_integrated_quantities ()
 
     // Stellar centers of mass and velocities.
 
-    Real com_p_mag = 0.0;
-    Real com_s_mag = 0.0;
+    Real com_P_mag = 0.0;
+    Real com_S_mag = 0.0;
 
-    Real com_p[3] = { 0.0 };
-    Real com_s[3] = { 0.0 };
+    Real vel_P_mag = 0.0;
+    Real vel_S_mag = 0.0;
 
-    Real vel_p_mag = 0.0;
-    Real vel_s_mag = 0.0;
+    Real vel_P_rad = 0.0;
+    Real vel_S_rad = 0.0;
 
-    Real vel_p[3] = { 0.0 };
-    Real vel_s[3] = { 0.0 };
-
-    Real vel_p_rad = 0.0;
-    Real vel_s_rad = 0.0;
-
-    Real vel_p_phi = 0.0;
-    Real vel_s_phi = 0.0;
-
-    // Gravitational free-fall timescale of the stars.
-    
-    Real t_ff_p = 0.0;
-    Real t_ff_s = 0.0;
-
-    // Gravitational wave amplitudes.
-    
-    Real h_plus_1  = 0.0;
-    Real h_cross_1 = 0.0;
-
-    Real h_plus_2  = 0.0;
-    Real h_cross_2 = 0.0;
-
-    Real h_plus_3  = 0.0;
-    Real h_cross_3 = 0.0;
-
-    // Species names and total masses on the domain.
-
-    const Real M_solar = 1.9884e33;
-
-    std::vector<Real> species_mass(NumSpec);
-    std::vector<std::string> species_names(NumSpec);
+    Real vel_P_phi = 0.0;
+    Real vel_S_phi = 0.0;
 
     std::string name1;
     std::string name2;
@@ -133,22 +97,7 @@ Castro::sum_integrated_quantities ()
     int fixwidth      = 25; // Floating point data not in scientific notation
     int intwidth      = 12; // Integer data
 
-    int axis_1;
-    int axis_2;
-    int axis_3;
-
-    // Determine various coordinate axes
-    get_axes(&axis_1, &axis_2, &axis_3);
-
-    wd_dist_init[axis_1 - 1] = 1.0;
-
-    // Determine the names of the species in the simulation.
-
-    for (int i = 0; i < NumSpec; i++) {
-      species_names[i] = desc_lst[State_Type].name(FirstSpec+i);
-      species_names[i] = species_names[i].substr(4,std::string::npos);
-      species_mass[i]  = 0.0;
-    }
+    wd_dist_init[problem::axis_1 - 1] = 1.0;
 
     for (int lev = 0; lev <= finest_level; lev++)
     {
@@ -197,17 +146,6 @@ Castro::sum_integrated_quantities ()
 	rho_phirot += ca_lev.volProductSum("density", "phiRot", time, local_flag);
 #endif
 
-#ifdef GRAVITY
-#if (BL_SPACEDIM > 1)
-      // Gravitational wave signal. This is designed to add to these quantities so we can send them directly.
-      ca_lev.gwstrain(time, h_plus_1, h_cross_1, h_plus_2, h_cross_2, h_plus_3, h_cross_3, local_flag);
-#endif
-#endif
-
-      // Integrated mass of all species on the domain.
-      for (int i = 0; i < NumSpec; i++)
-	species_mass[i] += ca_lev.volWgtSum("rho_" + species_names[i], time, local_flag) / M_solar;
-
     }
 
     // Return to the original level.
@@ -216,7 +154,7 @@ Castro::sum_integrated_quantities ()
 
     // Do the reductions.
 
-    int nfoo_sum = 24 + NumSpec;
+    int nfoo_sum = 18;
 
     amrex::Vector<Real> foo_sum(nfoo_sum);
 
@@ -234,16 +172,6 @@ Castro::sum_integrated_quantities ()
     foo_sum[15] = rho_e;
     foo_sum[16] = rho_phi;
     foo_sum[17] = rho_phirot;
-    foo_sum[18] = h_plus_1;
-    foo_sum[19] = h_cross_1;
-    foo_sum[20] = h_plus_2;
-    foo_sum[21] = h_cross_2;
-    foo_sum[22] = h_plus_3;
-    foo_sum[23] = h_cross_3;
-
-    for (int i = 0; i < NumSpec; i++) {
-      foo_sum[i + 24] = species_mass[i];
-    }
 
     amrex::ParallelDescriptor::ReduceRealSum(foo_sum.dataPtr(), nfoo_sum);
 
@@ -261,16 +189,6 @@ Castro::sum_integrated_quantities ()
     rho_e      = foo_sum[15];
     rho_phi    = foo_sum[16];
     rho_phirot = foo_sum[17];
-    h_plus_1   = foo_sum[18];
-    h_cross_1  = foo_sum[19];
-    h_plus_2   = foo_sum[20];
-    h_cross_2  = foo_sum[21];
-    h_plus_3   = foo_sum[22];
-    h_cross_3  = foo_sum[23];
-
-    for (int i = 0; i < NumSpec; i++) {
-      species_mass[i] = foo_sum[i + 24];
-    }
 
     // Complete calculations for energy and momenta
 
@@ -293,41 +211,43 @@ Castro::sum_integrated_quantities ()
 
     }
 
-    get_star_data(com_p, com_s, vel_p, vel_s, &mass_p, &mass_s, &t_ff_p, &t_ff_s);
-
-    com_p_mag += std::pow( std::pow(com_p[0],2) + std::pow(com_p[1],2) + std::pow(com_p[2],2), 0.5 );
-    com_s_mag += std::pow( std::pow(com_s[0],2) + std::pow(com_s[1],2) + std::pow(com_s[2],2), 0.5 );
-    vel_p_mag += std::pow( std::pow(vel_p[0],2) + std::pow(vel_p[1],2) + std::pow(vel_p[2],2), 0.5 );
-    vel_s_mag += std::pow( std::pow(vel_s[0],2) + std::pow(vel_s[1],2) + std::pow(vel_s[2],2), 0.5 );
+    com_P_mag += std::pow( std::pow(com_P[0],2) + std::pow(com_P[1],2) + std::pow(com_P[2],2), 0.5 );
+    com_S_mag += std::pow( std::pow(com_S[0],2) + std::pow(com_S[1],2) + std::pow(com_S[2],2), 0.5 );
+    vel_P_mag += std::pow( std::pow(vel_P[0],2) + std::pow(vel_P[1],2) + std::pow(vel_P[2],2), 0.5 );
+    vel_S_mag += std::pow( std::pow(vel_S[0],2) + std::pow(vel_S[1],2) + std::pow(vel_S[2],2), 0.5 );
 
 #if (BL_SPACEDIM == 3)
-    if (mass_p > 0.0) {
-      vel_p_rad = (com_p[axis_1 - 1] / com_p_mag) * vel_p[axis_1 - 1] + (com_p[axis_2 - 1] / com_p_mag) * vel_p[axis_2 - 1];
-      vel_p_phi = (com_p[axis_1 - 1] / com_p_mag) * vel_p[axis_2 - 1] - (com_p[axis_2 - 1] / com_p_mag) * vel_p[axis_1 - 1];
+    if (mass_P > 0.0) {
+      vel_P_rad = (com_P[problem::axis_1 - 1] / com_P_mag) * vel_P[problem::axis_1 - 1] +
+                  (com_P[problem::axis_2 - 1] / com_P_mag) * vel_P[problem::axis_2 - 1];
+      vel_P_phi = (com_P[problem::axis_1 - 1] / com_P_mag) * vel_P[problem::axis_2 - 1] -
+                  (com_P[problem::axis_2 - 1] / com_P_mag) * vel_P[problem::axis_1 - 1];
     }
 
-    if (mass_s > 0.0) {
-      vel_s_rad = (com_s[axis_1 - 1] / com_s_mag) * vel_s[axis_1 - 1] + (com_s[axis_2 - 1] / com_s_mag) * vel_s[axis_2 - 1];
-      vel_s_phi = (com_s[axis_1 - 1] / com_s_mag) * vel_s[axis_2 - 1] - (com_s[axis_2 - 1] / com_s_mag) * vel_s[axis_1 - 1];
+    if (mass_S > 0.0) {
+      vel_S_rad = (com_S[problem::axis_1 - 1] / com_S_mag) * vel_S[problem::axis_1 - 1] +
+                  (com_S[problem::axis_2 - 1] / com_S_mag) * vel_S[problem::axis_2 - 1];
+      vel_S_phi = (com_S[problem::axis_1 - 1] / com_S_mag) * vel_S[problem::axis_2 - 1] -
+                  (com_S[problem::axis_2 - 1] / com_S_mag) * vel_S[problem::axis_1 - 1];
     }
 #else
-    if (mass_p > 0.0) {
-      vel_p_rad = vel_p[axis_1 - 1];
-      vel_p_phi = vel_p[axis_3 - 1];
+    if (mass_P > 0.0) {
+      vel_P_rad = vel_P[problem::axis_1 - 1];
+      vel_P_phi = vel_P[problem::axis_3 - 1];
     }
 
-    if (mass_s > 0.0) {
-      vel_s_rad = vel_s[axis_1 - 1];
-      vel_s_phi = vel_s[axis_3 - 1];
+    if (mass_S > 0.0) {
+      vel_S_rad = vel_S[problem::axis_1 - 1];
+      vel_S_phi = vel_S[problem::axis_3 - 1];
     }
 #endif
 
-    if (mass_p > 0.0 && mass_s > 0.0) {
+    if (mass_P > 0.0 && mass_S > 0.0) {
 
       // Calculate the distance between the primary and secondary.
 
       for ( int i = 0; i < 3; i++ )
-	wd_dist[i] = com_s[i] - com_p[i];
+	wd_dist[i] = com_S[i] - com_P[i];
 
       separation = norm(wd_dist);
 
@@ -335,21 +255,14 @@ Castro::sum_integrated_quantities ()
       // the line currently joining the two stars. Note that this
       // neglects any motion in the plane perpendicular to the initial orbit.
 
-      angle = atan2( wd_dist[axis_2 - 1] - wd_dist_init[axis_2 - 1],
-                     wd_dist[axis_1 - 1] - wd_dist_init[axis_1 - 1] ) * 180.0 / M_PI;
+      angle = std::atan2(wd_dist[problem::axis_2 - 1] - wd_dist_init[problem::axis_2 - 1],
+                         wd_dist[problem::axis_1 - 1] - wd_dist_init[problem::axis_1 - 1]) * 180.0 / M_PI;
 
       // Now let's transform from [-180, 180] to [0, 360].
 
       if (angle < 0.0) angle += 360.0;
 
     }
-
-    // Calculate wall time for the step.
-
-    Real wall_time = 0.0;
-
-    if (time > 0.0)
-        wall_time = amrex::ParallelDescriptor::second() - wall_time_start;
 
     // Write data out to the log.
 
@@ -418,12 +331,6 @@ Castro::sum_integrated_quantities ()
 	     header << std::setw(datwidth) << "                R COM VEL"; ++n;
 	     header << std::setw(datwidth) << "                Z COM VEL"; ++n;
 #endif
-	     header << std::setw(datwidth) << "             h_+ (axis 1)"; ++n;
-	     header << std::setw(datwidth) << "             h_x (axis 1)"; ++n;
-	     header << std::setw(datwidth) << "             h_+ (axis 2)"; ++n;
-	     header << std::setw(datwidth) << "             h_x (axis 2)"; ++n;
-	     header << std::setw(datwidth) << "             h_+ (axis 3)"; ++n;
-	     header << std::setw(datwidth) << "             h_x (axis 3)"; ++n;
 
 	     header << std::endl;
 
@@ -481,12 +388,6 @@ Castro::sum_integrated_quantities ()
 #if (BL_SPACEDIM == 3)
 	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_vel[2];
 #endif
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_plus_1;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_cross_1;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_plus_2;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_cross_2;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_plus_3;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << h_cross_3;
 
 	   log << std::endl;
 	 }
@@ -548,189 +449,11 @@ Castro::sum_integrated_quantities ()
 	 }
       }
 
-      // Species
-
-      if (parent->NumDataLogs() > 2) {
-
-	 std::ostream& log = parent->DataLog(2);
-
-	 if ( log.good() ) {
-
-	   if (time == 0.0) {
-
-	     // Output the git commit hashes used to build the executable.
-
-	     writeGitHashes(log);
-
-             int n = 0;
-
-             std::ostringstream header;
-
-	     header << std::setw(intwidth) << "#   TIMESTEP";           ++n;
-	     header << std::setw(fixwidth) << "                  TIME"; ++n;
-
-	     // We need to be careful here since the species names have differing numbers of characters
-
-	     for (int i = 0; i < NumSpec; i++) {
-	       std::string outString  = "";
-	       std::string massString = "Mass ";
-	       std::string specString = species_names[i];
-               while (outString.length() + specString.length() + massString.length() < datwidth) outString += " ";
-	       outString += massString;
-	       outString += specString;
-	       header << std::setw(datwidth) << outString; ++n;
-	     }
-
-	     header << std::endl;
-
-             log << std::setw(intwidth) << "#   COLUMN 1";
-             log << std::setw(fixwidth) << "                        2";
-
-             for (int i = 3; i <= n; ++i)
-                 log << std::setw(datwidth) << i;
-
-             log << std::endl;
-
-             log << header.str();
-
-	   }
-
-	   log << std::fixed;
-
-	   log << std::setw(intwidth)                                     << timestep;
-	   log << std::setw(fixwidth) << std::setprecision(dataprecision) << time;
-
-	   log << std::scientific;
-
-	   for (int i = 0; i < NumSpec; i++)
-	     log << std::setw(datwidth) << std::setprecision(dataprecision) << species_mass[i];
-
-	   log << std::endl;
-
-	 }
-      }
-
-      // Information about the AMR driver.
-
-      if (parent->NumDataLogs() > 3) {
-
-	 std::ostream& log = parent->DataLog(3);
-
-	 if ( log.good() ) {
-
-	   if (time == 0.0) {
-
-	     // Output the git commit hashes used to build the executable.
-
-	     writeGitHashes(log);
-
-             int n = 0;
-
-             std::ostringstream header;
-
-	     header << std::setw(intwidth) << "#   TIMESTEP";              ++n;
-	     header << std::setw(fixwidth) << "                     TIME"; ++n;
-	     header << std::setw(fixwidth) << "                       DT"; ++n;
-	     header << std::setw(intwidth) << "  FINEST LEV";              ++n;
-             header << std::setw(fixwidth) << " COARSE TIMESTEP WALLTIME"; ++n;
-
-	     header << std::endl;
-
-             log << std::setw(intwidth) << "#   COLUMN 1";
-             log << std::setw(fixwidth) << "                        2";
-
-             for (int i = 3; i < 4; ++i)
-                 log << std::setw(datwidth) << i;
-
-             log << std::setw(intwidth) << 4; // Handle the finest lev column
-
-             for (int i = 5; i <= n; ++i)
-                 log << std::setw(datwidth) << i;
-
-             log << std::endl;
-
-             log << header.str();
-
-	   }
-
-	   log << std::fixed;
-
-	   log << std::setw(intwidth)                                     << timestep;
-	   log << std::setw(fixwidth) << std::setprecision(dataprecision) << time;
-	   log << std::setw(fixwidth) << std::setprecision(dataprecision) << dt;
-	   log << std::setw(intwidth)                                     << parent->finestLevel();
-           log << std::setw(datwidth) << std::setprecision(dataprecision) << wall_time;
-
-	   log << std::endl;
-
-	 }
-
-      }
-
-      // Material lost through domain boundaries
+      // Primary star
 
       if (parent->NumDataLogs() > 4) {
 
-	 std::ostream& log = parent->DataLog(4);
-
-	 if ( log.good() ) {
-
-	   if (time == 0.0) {
-
-	     // Output the git commit hashes used to build the executable.
-
-	     writeGitHashes(log);
-
-             int n = 0;
-
-             std::ostringstream header;
-
-	     header << std::setw(intwidth) << "#   TIMESTEP";              ++n;
-	     header << std::setw(fixwidth) << "                     TIME"; ++n;
-	     header << std::setw(datwidth) << "                MASS LOST"; ++n;
-	     header << std::setw(datwidth) << "                XMOM LOST"; ++n;
-	     header << std::setw(datwidth) << "                YMOM LOST"; ++n;
-	     header << std::setw(datwidth) << "                ZMOM LOST"; ++n;
-	     header << std::setw(datwidth) << "                EDEN LOST"; ++n;
-	     header << std::setw(datwidth) << "         ANG. MOM. X LOST"; ++n;
-	     header << std::setw(datwidth) << "         ANG. MOM. Y LOST"; ++n;
-	     header << std::setw(datwidth) << "         ANG. MOM. Z LOST"; ++n;
-
-	     header << std::endl;
-
-             log << std::setw(intwidth) << "#   COLUMN 1";
-             log << std::setw(fixwidth) << "                        2";
-
-             for (int i = 3; i <= n; ++i)
-                 log << std::setw(datwidth) << i;
-
-             log << std::endl;
-
-             log << header.str();
-
-	   }
-
-	   log << std::fixed;
-
-	   log << std::setw(intwidth)                                     << timestep;
-	   log << std::setw(fixwidth) << std::setprecision(dataprecision) << time;
-
-	   log << std::scientific;
-
-	   for (int i = 0; i < n_lost; i++)
-	     log << std::setw(datwidth) << std::setprecision(dataprecision) << material_lost_through_boundary_cumulative[i];
-
-	   log << std::endl;
-
-	 }
-
-      }
-
-      // Primary star
-
-      if (parent->NumDataLogs() > 5) {
-
-	std::ostream& log = parent->DataLog(5);
+	std::ostream& log = parent->DataLog(4);
 
 	 if ( log.good() ) {
 
@@ -794,25 +517,25 @@ Castro::sum_integrated_quantities ()
 
 	   log << std::scientific;
 
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mass_p;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mdot_p;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_p_mag;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_p[0];
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_p[1];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mass_P;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mdot_P;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_P_mag;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_P[0];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_P[1];
 #if (BL_SPACEDIM == 3)
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_p[2];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_P[2];
 #endif
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p_mag;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p_rad;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p_phi;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p[0];
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p[1];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P_mag;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P_rad;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P_phi;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P[0];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P[1];
 #if (BL_SPACEDIM == 3)
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_p[2];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_P[2];
 #endif
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << t_ff_p;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << t_ff_P;
 	   for (int i = 0; i <= 6; ++i)
-	       log << std::setw(datwidth) << std::setprecision(dataprecision) << rad_p[i];
+	       log << std::setw(datwidth) << std::setprecision(dataprecision) << rad_P[i];
 
 	   log << std::endl;
 
@@ -822,9 +545,9 @@ Castro::sum_integrated_quantities ()
 
       // Secondary star
 
-      if (parent->NumDataLogs() > 6) {
+      if (parent->NumDataLogs() > 5) {
 
-	std::ostream& log = parent->DataLog(6);
+	std::ostream& log = parent->DataLog(5);
 
 	 if ( log.good() ) {
 
@@ -888,25 +611,25 @@ Castro::sum_integrated_quantities ()
 
 	   log << std::scientific;
 
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mass_s;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mdot_s;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_s_mag;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_s[0];
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_s[1];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mass_S;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << mdot_S;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_S_mag;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_S[0];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_S[1];
 #if (BL_SPACEDIM == 3)
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_s[2];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << com_S[2];
 #endif
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s_mag;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s_rad;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s_phi;
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s[0];
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s[1];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S_mag;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S_rad;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S_phi;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S[0];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S[1];
 #if (BL_SPACEDIM == 3)
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_s[2];
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << vel_S[2];
 #endif
-	   log << std::setw(datwidth) << std::setprecision(dataprecision) << t_ff_s;
+	   log << std::setw(datwidth) << std::setprecision(dataprecision) << t_ff_S;
 	   for (int i = 0; i <= 6; ++i)
-	       log << std::setw(datwidth) << std::setprecision(dataprecision) << rad_s[i];
+	       log << std::setw(datwidth) << std::setprecision(dataprecision) << rad_S[i];
 
 	   log << std::endl;
 
@@ -916,9 +639,9 @@ Castro::sum_integrated_quantities ()
 
       // Extrema over time of various quantities
 
-      if (parent->NumDataLogs() > 7) {
+      if (parent->NumDataLogs() > 6) {
 
-	 std::ostream& log = parent->DataLog(7);
+	 std::ostream& log = parent->DataLog(6);
 
 	 if ( log.good() ) {
 
@@ -977,9 +700,9 @@ Castro::sum_integrated_quantities ()
 
       // Rotation period over time
 
-      if (parent->NumDataLogs() > 8) {
+      if (parent->NumDataLogs() > 7) {
 
-	 std::ostream& log = parent->DataLog(8);
+	 std::ostream& log = parent->DataLog(7);
 
 	 if ( log.good() ) {
 

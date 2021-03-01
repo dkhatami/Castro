@@ -1,8 +1,7 @@
 /* Implementations of functions in Problem.H go here */
 
-#include "Castro.H"
-#include "Castro_F.H"
-#include "Problem_F.H"
+#include <Castro.H>
+#include <Castro_F.H>
 #include <AMReX_TracerParticles.H>
 #include <AMReX_AmrParticles.H>
 
@@ -54,19 +53,19 @@ void Castro::problem_post_simulation(Vector<std::unique_ptr<AmrLevel> >& amr_lev
 
 	for (int i = 0; i < num_particles; i++)
 	{
-		AMREX_D_TERM(ifs >> p.m_rdata.pos[0]; ,
-		             ifs >> p.m_rdata.pos[1]; ,
-		             ifs >> p.m_rdata.pos[2]; );
+		AMREX_D_TERM(ifs >> p.m_pos[0]; ,
+		             ifs >> p.m_pos[1]; ,
+		             ifs >> p.m_pos[2]; );
 
 		auto extradata = 0;
 
 		for (int n = 0; n < extradata; n++)
 		{
-			ifs >> p.m_rdata.arr[AMREX_SPACEDIM+n];
+			ifs >> p.m_rdata[AMREX_SPACEDIM+n];
 		}
 
-		p.m_idata.id  = ParticleType::NextID();
-		p.m_idata.cpu = MyProc;
+		p.id()  = ParticleType::NextID();
+		p.cpu() = MyProc;
 
 		nparticles.push_back(p);
 	}
@@ -92,15 +91,15 @@ void Castro::problem_post_simulation(Vector<std::unique_ptr<AmrLevel> >& amr_lev
 
 			// find the original particle and calculate change in position
 			for (; !match && it != nparticles.end(); ++it) {
-				if (it->m_idata.id == p.m_idata.id)
+                            if (it->id() == p.id())
 					match = true;
 			}
 
 			if (!match) Print() << "haven't found a match :(" << std::endl;
 
 			// calculate change in position
-			auto deltax = it->m_rdata.pos[0] - p.m_rdata.pos[0];
-			auto deltay = it->m_rdata.pos[1] - p.m_rdata.pos[1];
+			auto deltax = it->m_pos[0] - p.m_pos[0];
+			auto deltay = it->m_pos[1] - p.m_pos[1];
 
 			auto delta = sqrt(deltax*deltax + deltay*deltay);
 

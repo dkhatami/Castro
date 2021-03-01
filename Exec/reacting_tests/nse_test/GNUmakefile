@@ -3,31 +3,25 @@ PROFILE    = FALSE
 
 DEBUG      = FALSE
 
-DIM        = 1
+DIM        = 2
 
 COMP	   = gnu
 
-USE_MPI    = FALSE
+USE_MPI    = TRUE
 
 USE_REACT  = TRUE
 
-CASTRO_HOME = ../../..
 
-ifdef MICROPHYSICS_HOME
+CASTRO_HOME = ../../..
 
 # This sets the EOS directory in $(MICROPHYSICS_HOME)/eos
 EOS_DIR     := helmholtz
 
 # This sets the EOS directory in $(MICROPHYSICS_HOME)/networks
 NETWORK_DIR := aprox19
+USE_NSE := TRUE
 
 INTEGRATOR_DIR := VODE
-
-else
-
-$(error Error: This problem requires the Microphysics repository. Please ensure that you have downloaded it and set $$MICROPHYSICS_HOME appropriately)
-
-endif
 
 Bpack   := ./Make.package
 Blocs   := .

@@ -1,8 +1,8 @@
-#include "Castro.H"
-#include "Castro_F.H"
+#include <Castro.H>
+#include <Castro_F.H>
 
 #ifdef RADIATION
-#include "Radiation.H"
+#include <Radiation.H>
 #endif
 
 using namespace amrex;
@@ -15,7 +15,7 @@ Castro::apply_source_to_state(MultiFab& target_state, MultiFab& source, Real dt,
     AMREX_ASSERT(source.nGrow() >= ng);
     AMREX_ASSERT(target_state.nGrow() >= ng);
 
-    MultiFab::Saxpy(target_state, dt, source, 0, 0, NUM_STATE, ng);
+    MultiFab::Saxpy(target_state, dt, source, 0, 0, source.nComp(), ng);
 }
 
 void
@@ -36,23 +36,34 @@ Castro::source_flag(int src)
 
 #ifdef SPONGE
     case sponge_src:
-	if (do_sponge)
-	    return true;
-	else
-	    return false;
+        if (do_sponge)
+            return true;
+        else
+            return false;
 #endif
 
     case ext_src:
-	if (add_ext_src)
-	    return true;
-	else
-	    return false;
-
+        if (add_ext_src)
+            return true;
+        else
+            return false;
+#ifndef MHD
     case thermo_src:
         if (time_integration_method == SpectralDeferredCorrections)
           return true;
         else
           return false;
+#else
+    case thermo_src:
+        return true;
+#endif
+
+    case geom_src:
+        if (geom.Coord() == 1) {
+          return true;
+        } else {
+          return false;
+        }
 
 #ifdef DIFFUSION
     case diff_src:
@@ -67,33 +78,37 @@ Castro::source_flag(int src)
 
 #ifdef HYBRID_MOMENTUM
     case hybrid_src:
-	return true;
+        return true;
 #endif
 
 #ifdef GRAVITY
     case grav_src:
-	if (do_grav)
-	    return true;
-	else
-	    return false;
+        if (do_grav)
+            return true;
+        else
+            return false;
 #endif
 
 #ifdef ROTATION
     case rot_src:
-	if (do_rotation)
-	    return true;
-	else
-	    return false;
+        if (do_rotation)
+            return true;
+        else
+            return false;
 #endif
 
     default:
-	return false;
+        return false;
 
     } // end switch
 }
 
 void
-Castro::do_old_sources(MultiFab& source, MultiFab& state_in, Real time, Real dt, int amr_iteration, int amr_ncycle)
+Castro::do_old_sources(
+#ifdef MHD
+                MultiFab& Bx, MultiFab& By, MultiFab& Bz,
+#endif
+                MultiFab& source, MultiFab& state_old, MultiFab& state_new, Real time, Real dt, bool apply_to_state)
 {
 
     BL_PROFILE("Castro::do_old_sources()");
@@ -104,8 +119,56 @@ Castro::do_old_sources(MultiFab& source, MultiFab& state_in, Real time, Real dt,
 
     source.setVal(0.0, source.nGrow());
 
-    for (int n = 0; n < num_src; ++n)
-        construct_old_source(n, source, state_in, time, dt, amr_iteration, amr_ncycle);
+    MultiFab temp_source;
+
+    if (apply_sources_consecutively && apply_to_state) {
+        temp_source.define(grids, dmap, NSRC, NUM_GROW);
+        temp_source.setVal(0.0, NUM_GROW);
+    }
+
+    for (int n = 0; n < num_src; ++n) {
+        construct_old_source(n, source, state_old, time, dt);
+
+        // We can either apply the sources to the state one by one, or we can
+        // group them all together at the end.
+
+        if (apply_sources_consecutively && apply_to_state) {
+
+            apply_source_to_state(state_new, source, dt, 0);
+            clean_state(
+#ifdef MHD
+                            Bx, By, Bz,
+#endif
+                            state_new, time + dt, 0);
+
+            // Zero out the source MultiFab for the next source term.
+            // Also, log the sum of all source terms since we need
+            // to save that after we're done.
+
+            MultiFab::Add(temp_source, source, 0, 0, NSRC, NUM_GROW);
+
+            if (n < num_src - 1) {
+                source.setVal(0.0, NUM_GROW);
+            }
+
+        }
+
+    }
+
+    if (apply_to_state) {
+
+        if (apply_sources_consecutively) {
+            MultiFab::Copy(source, temp_source, 0, 0, NSRC, NUM_GROW);
+        } else {
+            apply_source_to_state(state_new, source, dt, 0);
+            clean_state(
+#ifdef MHD
+                            Bx, By, Bz,
+#endif
+                            state_new, time, 0);
+        }
+
+    }
 
     // Optionally print out diagnostic information about how much
     // these source terms changed the state.
@@ -121,21 +184,25 @@ Castro::do_old_sources(MultiFab& source, MultiFab& state_in, Real time, Real dt,
         Real      run_time = ParallelDescriptor::second() - strt_time;
 
 #ifdef BL_LAZY
-	Lazy::QueueReduction( [=] () mutable {
+        Lazy::QueueReduction( [=] () mutable {
 #endif
         ParallelDescriptor::ReduceRealMax(run_time,IOProc);
 
-	if (ParallelDescriptor::IOProcessor())
-	  std::cout << "Castro::do_old_sources() time = " << run_time << "\n" << "\n";
+        if (ParallelDescriptor::IOProcessor())
+          std::cout << "Castro::do_old_sources() time = " << run_time << "\n" << "\n";
 #ifdef BL_LAZY
-	});
+        });
 #endif
     }
 
 }
 
 void
-Castro::do_new_sources(MultiFab& source, MultiFab& state_old, MultiFab& state_new, Real time, Real dt, int amr_iteration, int amr_ncycle)
+Castro::do_new_sources(
+#ifdef MHD
+                MultiFab& Bx, MultiFab& By, MultiFab& Bz,
+#endif
+                MultiFab& source, MultiFab& state_old, MultiFab& state_new, Real time, Real dt, bool apply_to_state)
 {
 
     BL_PROFILE("Castro::do_new_sources()");
@@ -144,15 +211,63 @@ Castro::do_new_sources(MultiFab& source, MultiFab& state_old, MultiFab& state_ne
 
     source.setVal(0.0, NUM_GROW);
 
+    MultiFab temp_source;
+
+    if (apply_sources_consecutively && apply_to_state) {
+        temp_source.define(grids, dmap, NSRC, NUM_GROW);
+        temp_source.setVal(0.0, NUM_GROW);
+    }
+
     // Construct the new-time source terms.
 
-    for (int n = 0; n < num_src; ++n)
-        construct_new_source(n, source, state_old, state_new, time, dt, amr_iteration, amr_ncycle);
+    for (int n = 0; n < num_src; ++n) {
+        construct_new_source(n, source, state_old, state_new, time, dt);
 
-    // The individual source terms only calculate the source on the valid domain.
-    // FillPatch to get valid data in the ghost zones.
+        // We can either apply the sources to the state one by one, or we can
+        // group them all together at the end.
 
-    AmrLevel::FillPatch(*this, source, NUM_GROW, time, Source_Type, 0, NUM_STATE);
+        if (apply_sources_consecutively && apply_to_state) {
+
+            // The individual source terms only calculate the source on the valid domain.
+            // FillPatch to get valid data in the ghost zones.
+
+            AmrLevel::FillPatch(*this, source, NUM_GROW, time, Source_Type, 0, source.nComp());
+
+            apply_source_to_state(state_new, source, dt, 0);
+            clean_state(
+#ifdef MHD
+                            Bx, By, Bz,
+#endif
+                            state_new, time, 0);
+
+            // Zero out the source MultiFab for the next source term.
+            // Also, log the sum of all source terms since we need
+            // to save that after we're done.
+
+            MultiFab::Add(temp_source, source, 0, 0, NSRC, NUM_GROW);
+
+            if (n < num_src - 1) {
+                source.setVal(0.0, NUM_GROW);
+            }
+
+        }
+
+    }
+
+    if (apply_to_state) {
+
+        if (apply_sources_consecutively) {
+            MultiFab::Copy(source, temp_source, 0, 0, NSRC, NUM_GROW);
+        } else {
+            apply_source_to_state(state_new, source, dt, 0);
+            clean_state(
+#ifdef MHD
+                            Bx, By, Bz,
+#endif
+                            state_new, time, 0);
+        }
+
+    }
 
     // Optionally print out diagnostic information about how much
     // these source terms changed the state.
@@ -168,40 +283,44 @@ Castro::do_new_sources(MultiFab& source, MultiFab& state_old, MultiFab& state_ne
         Real      run_time = ParallelDescriptor::second() - strt_time;
 
 #ifdef BL_LAZY
-	Lazy::QueueReduction( [=] () mutable {
+        Lazy::QueueReduction( [=] () mutable {
 #endif
         ParallelDescriptor::ReduceRealMax(run_time,IOProc);
 
-	if (ParallelDescriptor::IOProcessor())
-	  std::cout << "Castro::do_new_sources() time = " << run_time << "\n" << "\n";
+        if (ParallelDescriptor::IOProcessor())
+          std::cout << "Castro::do_new_sources() time = " << run_time << "\n" << "\n";
 #ifdef BL_LAZY
-	});
+        });
 #endif
     }
 
 }
 
 void
-Castro::construct_old_source(int src, MultiFab& source, MultiFab& state_in, Real time, Real dt, int amr_iteration, int amr_ncycle)
+Castro::construct_old_source(int src, MultiFab& source, MultiFab& state_in, Real time, Real dt)
 {
     BL_PROFILE("Castro::construct_old_source()");
-    
+
     BL_ASSERT(src >= 0 && src < num_src);
 
     switch(src) {
 
 #ifdef SPONGE
     case sponge_src:
-	construct_old_sponge_source(source, state_in, time, dt);
-	break;
+        construct_old_sponge_source(source, state_in, time, dt);
+        break;
 #endif
 
     case ext_src:
-	construct_old_ext_source(source, state_in, time, dt);
-	break;
+        construct_old_ext_source(source, state_in, time, dt);
+        break;
 
     case thermo_src:
         construct_old_thermo_source(source, state_in, time, dt);
+        break;
+
+    case geom_src:
+        construct_old_geom_source(source, state_in, time, dt);
         break;
 
 #ifdef DIFFUSION
@@ -215,30 +334,30 @@ Castro::construct_old_source(int src, MultiFab& source, MultiFab& state_in, Real
 
 #ifdef HYBRID_MOMENTUM
     case hybrid_src:
-	construct_old_hybrid_source(source, state_in, time, dt);
-	break;
+        construct_old_hybrid_source(source, state_in, time, dt);
+        break;
 #endif
 
 #ifdef GRAVITY
     case grav_src:
-	construct_old_gravity_source(source, state_in, time, dt);
-	break;
+        construct_old_gravity_source(source, state_in, time, dt);
+        break;
 #endif
 
 #ifdef ROTATION
     case rot_src:
-	construct_old_rotation_source(source, state_in, time, dt);
-	break;
+        construct_old_rotation_source(source, state_in, time, dt);
+        break;
 #endif
 
     default:
-	break;
+        break;
 
     } // end switch
 }
 
 void
-Castro::construct_new_source(int src, MultiFab& source, MultiFab& state_old, MultiFab& state_new, Real time, Real dt, int amr_iteration, int amr_ncycle)
+Castro::construct_new_source(int src, MultiFab& source, MultiFab& state_old, MultiFab& state_new, Real time, Real dt)
 {
     BL_PROFILE("Castro::construct_new_source()");
 
@@ -248,40 +367,50 @@ Castro::construct_new_source(int src, MultiFab& source, MultiFab& state_old, Mul
 
 #ifdef SPONGE
     case sponge_src:
-	construct_new_sponge_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_sponge_source(source, state_old, state_new, time, dt);
+        break;
 #endif
 
     case ext_src:
-	construct_new_ext_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_ext_source(source, state_old, state_new, time, dt);
+        break;
+
+#ifdef MHD
+    case thermo_src:
+        construct_new_thermo_source(source, state_old, state_new, time, dt);
+        break;
+#endif
+
+    case geom_src:
+        construct_new_geom_source(source, state_old, state_new, time, dt);
+        break;
 
 #ifdef DIFFUSION
     case diff_src:
-	construct_new_diff_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_diff_source(source, state_old, state_new, time, dt);
+        break;
 #endif
 
 #ifdef HYBRID_MOMENTUM
     case hybrid_src:
-	construct_new_hybrid_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_hybrid_source(source, state_old, state_new, time, dt);
+        break;
 #endif
 
 #ifdef GRAVITY
     case grav_src:
-	construct_new_gravity_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_gravity_source(source, state_old, state_new, time, dt);
+        break;
 #endif
 
 #ifdef ROTATION
     case rot_src:
-	construct_new_rotation_source(source, state_old, state_new, time, dt);
-	break;
+        construct_new_rotation_source(source, state_old, state_new, time, dt);
+        break;
 #endif
 
     default:
-	break;
+        break;
 
     } // end switch
 }
@@ -310,11 +439,11 @@ Castro::apply_sources()
 // Note that the resultant output is volume-weighted.
 
 Vector<Real>
-Castro::evaluate_source_change(MultiFab& source, Real dt, bool local)
+Castro::evaluate_source_change(const MultiFab& source, Real dt, bool local)
 {
 
   BL_PROFILE("Castro::evaluate_source_change()");
-    
+
   Vector<Real> update(source.nComp(), 0.0);
 
   // Create a temporary array which will hold a single component
@@ -347,20 +476,14 @@ void
 Castro::print_source_change(Vector<Real> update)
 {
 
-  BL_ASSERT(update.size() == NUM_STATE);
-
   if (ParallelDescriptor::IOProcessor()) {
 
-    std::cout << "       mass added: " << update[Density] << std::endl;
-    std::cout << "       xmom added: " << update[Xmom] << std::endl;
-#if (BL_SPACEDIM >= 2)
-    std::cout << "       ymom added: " << update[Ymom] << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
-    std::cout << "       zmom added: " << update[Zmom] << std::endl;
-#endif
-    std::cout << "       eint added: " << update[Eint] << std::endl;
-    std::cout << "       ener added: " << update[Eden] << std::endl;
+    std::cout << "       mass added: " << update[URHO] << std::endl;
+    std::cout << "       xmom added: " << update[UMX] << std::endl;
+    std::cout << "       ymom added: " << update[UMY] << std::endl;
+    std::cout << "       zmom added: " << update[UMZ] << std::endl;
+    std::cout << "       eint added: " << update[UEINT] << std::endl;
+    std::cout << "       ener added: " << update[UEDEN] << std::endl;
 
     std::cout << std::endl;
 
@@ -369,38 +492,44 @@ Castro::print_source_change(Vector<Real> update)
 
 }
 
+// Calculate the changes to the state due to a source term,
+// and also print the results.
+
+void
+Castro::evaluate_and_print_source_change (const MultiFab& source, Real dt, std::string source_name)
+{
+    bool local = true;
+    Vector<Real> update = evaluate_source_change(source, dt, local);
+
+#ifdef BL_LAZY
+    Lazy::QueueReduction( [=] () mutable {
+#endif
+        ParallelDescriptor::ReduceRealSum(update.dataPtr(), update.size(), ParallelDescriptor::IOProcessorNumber());
+
+        if (ParallelDescriptor::IOProcessor()) {
+            if (std::abs(update[URHO]) != 0.0 || std::abs(update[UEDEN]) != 0.0) {
+                std::cout << std::endl << "  Contributions to the state from " << source_name << ":" << std::endl;
+
+                print_source_change(update);
+            }
+        }
+
+#ifdef BL_LAZY
+    });
+#endif
+}
+
 // For the old-time or new-time sources update, evaluate the change in the state
 // for all source terms, then print the results.
 
 void
 Castro::print_all_source_changes(Real dt, bool is_new)
 {
+    MultiFab& source = is_new ? get_new_data(Source_Type) : get_old_data(Source_Type);
 
-  Vector<Real> summed_updates;
+    std::string source_name = is_new? "new-time sources" : "old-time sources";
 
-  bool local = true;
-
-  MultiFab& source = is_new ? get_new_data(Source_Type) : get_old_data(Source_Type);
-
-  summed_updates = evaluate_source_change(source, dt, local);
-
-#ifdef BL_LAZY
-  Lazy::QueueReduction( [=] () mutable {
-#endif
-
-      ParallelDescriptor::ReduceRealSum(summed_updates.dataPtr(), NUM_STATE, ParallelDescriptor::IOProcessorNumber());
-
-      std::string time = is_new ? "new" : "old";
-
-      if (ParallelDescriptor::IOProcessor())
-          std::cout << std::endl << "  Contributions to the state from the " << time << "-time sources:" << std::endl;
-
-      print_source_change(summed_updates);
-
-#ifdef BL_LAZY
-    });
-#endif
-
+    evaluate_and_print_source_change(source, dt, source_name);
 }
 
 // Obtain the sum of all source terms.
@@ -424,16 +553,18 @@ Castro::sum_of_sources(MultiFab& source)
   MultiFab& old_sources = get_old_data(Source_Type);
   MultiFab& new_sources = get_new_data(Source_Type);
 
-  MultiFab::Add(source, old_sources, 0, 0, NUM_STATE, ng);
+  MultiFab::Add(source, old_sources, 0, 0, old_sources.nComp(), ng);
 
   MultiFab::Add(source, hydro_source, 0, 0, NUM_STATE, ng);
 
-  MultiFab::Add(source, new_sources, 0, 0, NUM_STATE, ng);
+  MultiFab::Add(source, new_sources, 0, 0, new_sources.nComp(), ng);
 
 }
 
 // Obtain the effective source term due to reactions on the primitive variables.
+// This is done with simplified_SDC
 
+#ifdef SIMPLIFIED_SDC
 #ifdef REACTIONS
 void
 Castro::get_react_source_prim(MultiFab& react_src, Real time, Real dt)
@@ -485,7 +616,7 @@ Castro::get_react_source_prim(MultiFab& react_src, Real time, Real dt)
 
     if (dt > 0.0) {
         MultiFab::Saxpy(A_prim,  1.0 / dt, q_noreact, 0, 0, NQ, ng);
-	MultiFab::Saxpy(A_prim, -1.0 / dt, q_old,     0, 0, NQ, ng);
+        MultiFab::Saxpy(A_prim, -1.0 / dt, q_old,     0, 0, NQ, ng);
     }
 
     // Compute the primitive version of the new state.
@@ -511,4 +642,5 @@ Castro::get_react_source_prim(MultiFab& react_src, Real time, Real dt)
     AmrLevel::FillPatch(*this, react_src, react_src.nGrow(), cur_time, Simplified_SDC_React_Type, 0, react_src.nComp());
 
 }
+#endif
 #endif

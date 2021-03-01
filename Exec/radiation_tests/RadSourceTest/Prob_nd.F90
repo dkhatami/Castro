@@ -7,6 +7,7 @@ subroutine amrex_probinit(init, name, namlen, problo, probhi) bind(C, name="amre
   use network, only : nspec
   use amrex_fort_module, only : rt => amrex_real
   use castro_error_module, only : castro_error
+  use prob_params_module, only : center
 
   implicit none
 
@@ -14,42 +15,13 @@ subroutine amrex_probinit(init, name, namlen, problo, probhi) bind(C, name="amre
   integer, intent(in) :: name(namlen)
   real(rt), intent(in) :: problo(3), probhi(3)
 
-  integer :: untin,i
-
   real(rt) :: X_in(nspec), e_0
   type(eos_t) :: eos_state
-
-  namelist /fortin/ rho_0, rhoe_0, E_rad
-
-  ! Build "probin" filename -- the name of file containing fortin namelist.
-
-  integer, parameter :: maxlen=127
-  character probin*(maxlen)
-
-  if (namlen .gt. maxlen) then
-     call castro_error("probin file name too long")
-  end if
-
-  do i = 1, namlen
-     probin(i:i) = char(name(i))
-  end do
-
-  ! set namelist defaults
-
-  ! read namelists
-  open(newunit=untin, file=probin(1:namlen), form='formatted', status='old')
-  read(untin, fortin)
-  close(unit=untin)
-
-
-  !-----------------------------------------------------------------------
-  ! Set local variable defaults
-  !-----------------------------------------------------------------------
 
   ! get T_0 corresponding to rhoe_0 and rho_0 through the EOS
   e_0 = rhoe_0/rho_0
   X_in(:) = 0.0
-  X_in(1) = 1.d0
+  X_in(1) = 1.e0_rt
 
   eos_state % rho = rho_0
   eos_state % e = e_0
@@ -61,11 +33,8 @@ subroutine amrex_probinit(init, name, namlen, problo, probhi) bind(C, name="amre
 
   ! the 'center' variables are the location of the middle of the
   ! domain -- this is where we put the interface
-  center(1) = 0.5d0*(problo(1)+probhi(1))
+  center(1) = 0.5e0_rt*(problo(1)+probhi(1))
 
-  ! domain extrema
-  xmin = problo(1)
-  xmax = probhi(1)
 
 end subroutine amrex_probinit
 
@@ -116,15 +85,15 @@ subroutine ca_initdata(level, time, lo, hi, nscal, &
   do k = lo(3), hi(3)
      do j = lo(2), hi(2)
         do i = lo(1), hi(1)
-           xcen = problo(1) + delta(1)*(dble(i) + 0.5d0)
+           xcen = problo(1) + delta(1)*(dble(i) + 0.5e0_rt)
 
            state(i,j,k,URHO) = rho_0
-           state(i,j,k,UMX:UMZ) = 0.d0
+           state(i,j,k,UMX:UMZ) = 0.e0_rt
            state(i,j,k,UEDEN) = rhoe_0
            state(i,j,k,UEINT) = rhoe_0
 
            ! set the composition to be all in the first species
-           state(i,j,k,UFS:UFS-1+nspec) = 0.d0
+           state(i,j,k,UFS:UFS-1+nspec) = 0.e0_rt
            state(i,j,k,UFS) = state(i,j,k,URHO)
 
            state(i,j,k,UTEMP) = T_0
@@ -174,13 +143,13 @@ subroutine ca_initrad(level, time, lo, hi, nrad, &
 
   else
 
-     trad = (E_rad * clight * 0.25d0 / stefbol) ** (0.25d0)
+     trad = (E_rad * clight * 0.25e0_rt / stefbol) ** (0.25e0_rt)
 
-     mgfac = 8.d0 * pi * hplanck / clight**3
+     mgfac = 8.e0_rt * pi * hplanck / clight**3
 
      do n = 0, nrad-1
         nu     = nugroup(n)
-        radtmp = exp(hplanck * nu / (kboltz * trad)) - 1.d0
+        radtmp = exp(hplanck * nu / (kboltz * trad)) - 1.e0_rt
         radtmp = (mgfac * nu**3 / radtmp) * dnugroup(n)
 
         do k = lo(3), hi(3)

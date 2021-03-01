@@ -1,63 +1,28 @@
-#include "Castro.H"
-#include "Castro_F.H"
+#include <Castro.H>
+#include <Castro_F.H>
+#include <Castro_util.H>
 
-#include "Gravity.H"
+#include <Gravity.H>
 #include <Gravity_F.H>
 
-#include "AMReX_ParmParse.H"
-#include "AMReX_buildInfo.H"
+#include <AMReX_ParmParse.H>
+#include <AMReX_buildInfo.H>
+
+#include <wdmerger_util.H>
+#include <wdmerger_data.H>
+#include <binary.H>
 
 #include <fstream>
 
 using namespace amrex;
 
-int Castro::relaxation_is_done = 0;
-int Castro::problem = -1;
-int Castro::use_stopping_criterion = 1;
-int Castro::use_energy_stopping_criterion = 0;
-Real Castro::ts_te_stopping_criterion = 1.e200;
-Real Castro::T_stopping_criterion = 1.e200;
-
-Real Castro::mass_p = 0.0;
-Real Castro::mass_s = 0.0;
-
-Real Castro::mdot_p = 0.0;
-Real Castro::mdot_s = 0.0;
-
-Real Castro::com_p[3] = { 0.0 };
-Real Castro::com_s[3] = { 0.0 };
-
-Real Castro::vel_p[3] = { 0.0 };
-Real Castro::vel_s[3] = { 0.0 };
-
-Real Castro::rad_p[7] = { 0.0 };
-Real Castro::rad_s[7] = { 0.0 };
-
-Real Castro::vol_p[7] = { 0.0 };
-Real Castro::vol_s[7] = { 0.0 };
-
-Real Castro::rho_avg_p = 0.0;
-Real Castro::rho_avg_s = 0.0;
-
-Real Castro::t_ff_p = 0.0;
-Real Castro::t_ff_s = 0.0;
-
-Real Castro::T_global_max = 0.0;
-Real Castro::rho_global_max = 0.0;
-Real Castro::ts_te_global_max = 0.0;
-
-Real Castro::T_curr_max = 0.0;
-Real Castro::rho_curr_max = 0.0;
-Real Castro::ts_te_curr_max = 0.0;
-
-Real Castro::total_ener_array[num_previous_ener_timesteps] = { 0.0 };
-
-#ifdef DO_PROBLEM_POST_TIMESTEP
 void
 Castro::problem_post_timestep()
 {
-
     BL_PROFILE("Castro::problem_post_timestep()");
+
+    using namespace wdmerger;
+    using namespace problem;
 
     if (level != 0) return;
 
@@ -86,9 +51,7 @@ Castro::problem_post_timestep()
     // the state of the simulation; those are checked here.
 
     check_to_stop(time);
-
 }
-#endif
 
 
 
@@ -102,47 +65,37 @@ Castro::wd_update (Real time, Real dt)
 {
     BL_PROFILE("Castro::wd_update()");
 
+    using namespace wdmerger;
+    using namespace problem;
+
     // Ensure we are either on the coarse level, or on the finest level
     // when we are not doing subcycling. The data should be sychronized
     // in both of these cases.
 
     BL_ASSERT(level == 0 || (!parent->subCycle() && level == parent->finestLevel()));
 
-    // Get the current stellar data
-    get_star_data(com_p, com_s, vel_p, vel_s, &mass_p, &mass_s, &t_ff_p, &t_ff_s);
-
     // Update the problem center using the system bulk velocity
-    update_center(&time);
+    update_center(time);
 
     for ( int i = 0; i < 3; i++ ) {
-      com_p[i] += vel_p[i] * dt;
-      com_s[i] += vel_s[i] * dt;
+      com_P[i] += vel_P[i] * dt;
+      com_S[i] += vel_S[i] * dt;
     }
 
-    // Now send this first estimate of the COM to Fortran, and then re-calculate
-    // a more accurate result using it as a starting point.
-
-    set_star_data(com_p, com_s, vel_p, vel_s, &mass_p, &mass_s, &t_ff_p, &t_ff_s);
+    // Now re-calculate a more accurate result using this as a starting point.
 
     // Save relevant current data.
 
-    Real old_mass_p = mass_p;
-    Real old_mass_s = mass_s;
+    Real old_mass_P = mass_P;
+    Real old_mass_S = mass_S;
 
-    Real com_p_x = 0.0;
-    Real com_p_y = 0.0;
-    Real com_p_z = 0.0;
-    Real com_s_x = 0.0;
-    Real com_s_y = 0.0;
-    Real com_s_z = 0.0;
-    Real vel_p_x = 0.0;
-    Real vel_p_y = 0.0;
-    Real vel_p_z = 0.0;
-    Real vel_s_x = 0.0;
-    Real vel_s_y = 0.0;
-    Real vel_s_z = 0.0;
-    Real mp      = 0.0;
-    Real ms      = 0.0;
+    ReduceOps<ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum,
+              ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum,
+              ReduceOpSum, ReduceOpSum> reduce_op;
+    ReduceData<Real, Real, Real, Real, Real, Real,
+               Real, Real, Real, Real, Real, Real,
+               Real, Real> reduce_data(reduce_op);
+    using ReduceTuple = typename decltype(reduce_data)::Type;
 
     for (int lev = 0; lev <= parent->finestLevel(); lev++) {
 
@@ -150,7 +103,24 @@ Castro::wd_update (Real time, Real dt)
 
       Castro& c_lev = getLevel(lev);
 
-      const Real* dx = c_lev.geom.CellSize();
+      GeometryData geomdata = c_lev.geom.data();
+
+      const auto dx = c_lev.geom.CellSizeArray();
+      const auto problo = c_lev.geom.ProbLoArray();
+      const auto probhi = c_lev.geom.ProbHiArray();
+      int coord_type = c_lev.geom.Coord();
+
+      GpuArray<bool, 3> symm_bound_lo{false};
+      GpuArray<bool, 3> symm_bound_hi{false};
+
+      for (int n = 0; n < AMREX_SPACEDIM; ++n) {
+          if (phys_bc.lo()[n] == Symmetry) {
+              symm_bound_lo[n] = true;
+          }
+          if (phys_bc.hi()[n] == Symmetry) {
+              symm_bound_hi[n] = true;
+          }
+      }
 
       // Density and momenta
 
@@ -175,118 +145,206 @@ Castro::wd_update (Real time, Real dt)
       {
           const MultiFab& mask = getLevel(lev+1).build_fine_mask();
 
-	  MultiFab::Multiply(*mfrho,   mask, 0, 0, 1, 0);
-	  MultiFab::Multiply(*mfxmom,  mask, 0, 0, 1, 0);
-	  MultiFab::Multiply(*mfymom,  mask, 0, 0, 1, 0);
-	  MultiFab::Multiply(*mfzmom,  mask, 0, 0, 1, 0);
-	  MultiFab::Multiply(*mfpmask, mask, 0, 0, 1, 0);
-	  MultiFab::Multiply(*mfsmask, mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfrho,   mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfxmom,  mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfymom,  mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfzmom,  mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfpmask, mask, 0, 0, 1, 0);
+          MultiFab::Multiply(*mfsmask, mask, 0, 0, 1, 0);
       }
 
 #ifdef _OPENMP
-#pragma omp parallel reduction(+:com_p_x,com_p_y,com_p_z,com_s_x,com_s_y,com_s_z) \
-                     reduction(+:vel_p_x,vel_p_y,vel_p_z,vel_s_x,vel_s_y,vel_s_z) \
-                     reduction(+:mp, ms)
+#pragma omp parallel
 #endif
-      for (MFIter mfi(*mfrho,true); mfi.isValid(); ++mfi) {
-          FArrayBox& fabrho   = (*mfrho )[mfi];
-	  FArrayBox& fabxmom  = (*mfxmom)[mfi];
-	  FArrayBox& fabymom  = (*mfymom)[mfi];
-	  FArrayBox& fabzmom  = (*mfzmom)[mfi];
-	  FArrayBox& fabpmask = (*mfpmask)[mfi];
-	  FArrayBox& fabsmask = (*mfsmask)[mfi];
-	  FArrayBox& vol      = c_lev.volume[mfi];
+      for (MFIter mfi(*mfrho, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+          auto rho   = (*mfrho )[mfi].array();
+          auto xmom  = (*mfxmom)[mfi].array();
+          auto ymom  = (*mfymom)[mfi].array();
+          auto zmom  = (*mfzmom)[mfi].array();
+          auto pmask = (*mfpmask)[mfi].array();
+          auto smask = (*mfsmask)[mfi].array();
+          auto vol   = c_lev.volume[mfi].array();
 
-	  const Box& box  = mfi.tilebox();
-	  const int* lo   = box.loVect();
-	  const int* hi   = box.hiVect();
+          const Box& box  = mfi.tilebox();
 
-#pragma gpu box(box)
-	  wdcom(BL_TO_FORTRAN_ANYD(fabrho),
-		BL_TO_FORTRAN_ANYD(fabxmom),
-		BL_TO_FORTRAN_ANYD(fabymom),
-		BL_TO_FORTRAN_ANYD(fabzmom),
-		BL_TO_FORTRAN_ANYD(fabpmask),
-		BL_TO_FORTRAN_ANYD(fabsmask),
-		BL_TO_FORTRAN_ANYD(vol),
-		AMREX_INT_ANYD(lo), AMREX_INT_ANYD(hi),
-		AMREX_REAL_ANYD(dx), time,
-		AMREX_MFITER_REDUCE_SUM(&com_p_x), AMREX_MFITER_REDUCE_SUM(&com_p_y), AMREX_MFITER_REDUCE_SUM(&com_p_z),
-		AMREX_MFITER_REDUCE_SUM(&com_s_x), AMREX_MFITER_REDUCE_SUM(&com_s_y), AMREX_MFITER_REDUCE_SUM(&com_s_z),
-                AMREX_MFITER_REDUCE_SUM(&vel_p_x), AMREX_MFITER_REDUCE_SUM(&vel_p_y), AMREX_MFITER_REDUCE_SUM(&vel_p_z),
-                AMREX_MFITER_REDUCE_SUM(&vel_s_x), AMREX_MFITER_REDUCE_SUM(&vel_s_y), AMREX_MFITER_REDUCE_SUM(&vel_s_z),
-		AMREX_MFITER_REDUCE_SUM(&mp), AMREX_MFITER_REDUCE_SUM(&ms));
-	}
+          // Return the mass-weighted center of mass and velocity
+          // for the primary and secondary, for a given FAB.
+          // Note that ultimately what we are doing here is to use
+          // an old guess at the effective potential of the primary
+          // and secondary to generate a new estimate.
+
+          reduce_op.eval(box, reduce_data,
+          [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) -> ReduceTuple
+          {
+              // Add to the COM locations and velocities of the primary and secondary
+              // depending on which potential dominates, ignoring unbound material.
+              // Note that in this routine we actually are summing mass-weighted
+              // quantities for the COM and the velocity; we will account for this at
+              // the end of the calculation in post_timestep() by dividing by the mass.
+
+              // Our convention is that the COM locations for the WDs are 
+              // absolute positions on the grid, not relative to the center.
+
+              GpuArray<Real, 3> r;
+              position(i, j, k, geomdata, r);
+
+              // We account for symmetric boundaries in this sum as usual,
+              // by adding to the position the locations that would exist
+              // on the opposite side of the symmetric boundary. Note that
+              // in axisymmetric coordinates, some of this work is already
+              // done for us in the definition of the zone volume.
+
+              GpuArray<Real, 3> rSymmetric{r[0], r[1], r[2]};
+              for (int n = 0; n < AMREX_SPACEDIM; ++n) {
+                  if (symm_bound_lo[n]) {
+                      rSymmetric[n] = rSymmetric[n] + (problo[n] - rSymmetric[n]);
+                  }
+                  if (symm_bound_hi[n]) {
+                      rSymmetric[n] = rSymmetric[n] + (rSymmetric[n] - probhi[n]);
+                  }
+              }
+
+              Real dm = rho(i,j,k) * vol(i,j,k);
+
+              Real dmSymmetric = dm;
+              GpuArray<Real, 3> momSymmetric{xmom(i,j,k), ymom(i,j,k), zmom(i,j,k)};
+
+              if (coord_type == 0) {
+
+                  if (symm_bound_lo[0]) {
+                      dmSymmetric *= 2.0_rt;
+                      for (int n = 0; n < 3; ++n) {
+                          momSymmetric[n] *= 2.0_rt;
+                      }
+                  }
+
+                  if (symm_bound_lo[1]) {
+                      dmSymmetric *= 2.0_rt;
+                      for (int n = 0; n < 3; ++n) {
+                          momSymmetric[n] *= 2.0_rt;
+                      }
+                  }
+
+                  if (symm_bound_lo[2]) {
+                      dmSymmetric *= 2.0_rt;
+                      for (int n = 0; n < 3; ++n) {
+                          momSymmetric[n] *= 2.0_rt;
+                      }
+                  }
+
+              }
+
+              Real primary_factor = 0.0_rt;
+              Real secondary_factor = 0.0_rt;
+
+              if (pmask(i,j,k) > 0.0_rt) {
+
+                  primary_factor = 1.0_rt;
+
+              }
+              else if (smask(i,j,k) > 0.0_rt) {
+
+                  secondary_factor = 1.0_rt;
+
+              }
+
+              Real com_P_x = dmSymmetric * rSymmetric[0] * primary_factor;
+              Real com_P_y = dmSymmetric * rSymmetric[1] * primary_factor;
+              Real com_P_z = dmSymmetric * rSymmetric[2] * primary_factor;
+
+              Real com_S_x = dmSymmetric * rSymmetric[0] * secondary_factor;
+              Real com_S_y = dmSymmetric * rSymmetric[1] * secondary_factor;
+              Real com_S_z = dmSymmetric * rSymmetric[2] * secondary_factor;
+
+              Real vel_P_x = momSymmetric[0] * vol(i,j,k) * primary_factor;
+              Real vel_P_y = momSymmetric[1] * vol(i,j,k) * primary_factor;
+              Real vel_P_z = momSymmetric[2] * vol(i,j,k) * primary_factor;
+
+              Real vel_S_x = momSymmetric[0] * vol(i,j,k) * secondary_factor;
+              Real vel_S_y = momSymmetric[1] * vol(i,j,k) * secondary_factor;
+              Real vel_S_z = momSymmetric[2] * vol(i,j,k) * secondary_factor;
+
+              Real m_P = dmSymmetric * primary_factor;
+              Real m_S = dmSymmetric * secondary_factor;
+
+              return {com_P_x, com_P_y, com_P_z, com_S_x, com_S_y, com_S_z,
+                      vel_P_x, vel_P_y, vel_P_z, vel_S_x, vel_S_y, vel_S_z,
+                      m_P, m_S};
+          });
+
+      }
 
     }
 
     ca_set_amr_info(level, -1, -1, -1.0, -1.0);
 
-    com_p[0] = com_p_x;
-    com_p[1] = com_p_y;
-    com_p[2] = com_p_z;
-    com_s[0] = com_s_x;
-    com_s[1] = com_s_y;
-    com_s[2] = com_s_z;
-    vel_p[0] = vel_p_x;
-    vel_p[1] = vel_p_y;
-    vel_p[2] = vel_p_z;
-    vel_s[0] = vel_s_x;
-    vel_s[1] = vel_s_y;
-    vel_s[2] = vel_s_z;
-    mass_p   = mp;
-    mass_s   = ms;
+    // Compute effective radii of stars at various density cutoffs
 
     bool local_flag = true;
 
-    // Compute effective radii of stars at various density cutoffs
-
     for (int i = 0; i <= 6; ++i)
-        Castro::volInBoundary(time, vol_p[i], vol_s[i], pow(10.0,i), local_flag);
+        Castro::volInBoundary(time, vol_P[i], vol_S[i], pow(10.0,i), local_flag);
 
     // Do all of the reductions.
+
+    ReduceTuple hv = reduce_data.value();
+
+    com_P[0] = amrex::get<0>(hv);
+    com_P[1] = amrex::get<1>(hv);
+    com_P[2] = amrex::get<2>(hv);
+    com_S[0] = amrex::get<3>(hv);
+    com_S[1] = amrex::get<4>(hv);
+    com_S[2] = amrex::get<5>(hv);
+    vel_P[0] = amrex::get<6>(hv);
+    vel_P[1] = amrex::get<7>(hv);
+    vel_P[2] = amrex::get<8>(hv);
+    vel_S[0] = amrex::get<9>(hv);
+    vel_S[1] = amrex::get<10>(hv);
+    vel_S[2] = amrex::get<11>(hv);
+    mass_P   = amrex::get<12>(hv);
+    mass_S   = amrex::get<13>(hv);
 
     const int nfoo_sum = 28;
     Real foo_sum[nfoo_sum] = { 0.0 };
 
     for (int i = 0; i <= 6; ++i) {
-      foo_sum[i  ] = vol_p[i];
-      foo_sum[i+7] = vol_s[i];
+      foo_sum[i  ] = vol_P[i];
+      foo_sum[i+7] = vol_S[i];
     }
 
-    foo_sum[14] = mass_p;
-    foo_sum[15] = mass_s;
+    foo_sum[14] = mass_P;
+    foo_sum[15] = mass_S;
 
     for (int i = 0; i <= 2; ++i) {
-      foo_sum[i+16] = com_p[i];
-      foo_sum[i+19] = com_s[i];
-      foo_sum[i+22] = vel_p[i];
-      foo_sum[i+25] = vel_s[i];
+      foo_sum[i+16] = com_P[i];
+      foo_sum[i+19] = com_S[i];
+      foo_sum[i+22] = vel_P[i];
+      foo_sum[i+25] = vel_S[i];
     }
 
     amrex::ParallelDescriptor::ReduceRealSum(foo_sum, nfoo_sum);
 
     for (int i = 0; i <= 6; ++i) {
-      vol_p[i] = foo_sum[i  ];
-      vol_s[i] = foo_sum[i+7];
+      vol_P[i] = foo_sum[i  ];
+      vol_S[i] = foo_sum[i+7];
     }
 
-    mass_p = foo_sum[14];
-    mass_s = foo_sum[15];
+    mass_P = foo_sum[14];
+    mass_S = foo_sum[15];
 
     for (int i = 0; i <= 2; ++i) {
-      com_p[i] = foo_sum[i+16];
-      com_s[i] = foo_sum[i+19];
-      vel_p[i] = foo_sum[i+22];
-      vel_s[i] = foo_sum[i+25];
+      com_P[i] = foo_sum[i+16];
+      com_S[i] = foo_sum[i+19];
+      vel_P[i] = foo_sum[i+22];
+      vel_S[i] = foo_sum[i+25];
     }
 
     // Compute effective WD radii
 
     for (int i = 0; i <= 6; ++i) {
 
-        rad_p[i] = std::pow(vol_p[i] * 3.0 / 4.0 / M_PI, 1.0/3.0);
-        rad_s[i] = std::pow(vol_s[i] * 3.0 / 4.0 / M_PI, 1.0/3.0);
+        rad_P[i] = std::pow(vol_P[i] * 3.0 / 4.0 / M_PI, 1.0/3.0);
+        rad_S[i] = std::pow(vol_S[i] * 3.0 / 4.0 / M_PI, 1.0/3.0);
 
     }
 
@@ -294,14 +352,14 @@ Castro::wd_update (Real time, Real dt)
 
     for ( int i = 0; i < 3; i++ ) {
 
-      if ( mass_p > 0.0 ) {
-        com_p[i] = com_p[i] / mass_p;
-        vel_p[i] = vel_p[i] / mass_p;
+      if ( mass_P > 0.0 ) {
+        com_P[i] = com_P[i] / mass_P;
+        vel_P[i] = vel_P[i] / mass_P;
       }
 
-      if ( mass_s > 0.0 ) {
-        com_s[i] = com_s[i] / mass_s;
-        vel_s[i] = vel_s[i] / mass_s;
+      if ( mass_S > 0.0 ) {
+        com_S[i] = com_S[i] / mass_S;
+        vel_S[i] = vel_S[i] / mass_S;
       }
 
     }
@@ -309,39 +367,35 @@ Castro::wd_update (Real time, Real dt)
     // For 1D we force the masses to remain constant
 
 #if (BL_SPACEDIM == 1)
-    mass_p = old_mass_p;
-    mass_s = old_mass_s;
+    mass_P = old_mass_P;
+    mass_S = old_mass_S;
 #endif
 
-    if (mass_p > 0.0 && dt > 0.0)
-      mdot_p = (mass_p - old_mass_p) / dt;
+    if (mass_P > 0.0 && dt > 0.0)
+      mdot_P = (mass_P - old_mass_P) / dt;
     else
-      mdot_p = 0.0;
+      mdot_P = 0.0;
 
-    if (mass_s > 0.0 && dt > 0.0)
-      mdot_s = (mass_s - old_mass_s) / dt;
+    if (mass_S > 0.0 && dt > 0.0)
+      mdot_S = (mass_S - old_mass_S) / dt;
     else
-      mdot_s = 0.0;
+      mdot_S = 0.0;
 
     // Free-fall timescale ~ 1 / sqrt(G * rho_avg}
 
-    Real Gconst;
-
-    get_grav_const(&Gconst);
-
-    if (mass_p > 0.0 && vol_p[2] > 0.0) {
-      rho_avg_p = mass_p / vol_p[2];
-      t_ff_p = sqrt(3.0 * M_PI / (32.0 * Gconst * rho_avg_p));
+    if (mass_P > 0.0 && vol_P[2] > 0.0) {
+      rho_avg_P = mass_P / vol_P[2];
+      t_ff_P = sqrt(3.0 * M_PI / (32.0 * C::Gconst * rho_avg_P));
     }
 
-    if (mass_s > 0.0 && vol_s[2] > 0.0) {
-      rho_avg_s = mass_s / vol_s[2];
-      t_ff_s = sqrt(3.0 * M_PI / (32.0 * Gconst * rho_avg_s));
+    if (mass_S > 0.0 && vol_S[2] > 0.0) {
+      rho_avg_S = mass_S / vol_S[2];
+      t_ff_S = sqrt(3.0 * M_PI / (32.0 * C::Gconst * rho_avg_S));
     }
 
-    // Send this updated information back to the Fortran probdata module
+    // Send this updated information back to the Fortran module
 
-    set_star_data(com_p, com_s, vel_p, vel_s, &mass_p, &mass_s, &t_ff_p, &t_ff_s);
+    set_star_data();
 
 }
 
@@ -353,14 +407,17 @@ Castro::wd_update (Real time, Real dt)
 // We also impose a distance requirement so that we only look
 // at zones that are within twice the original radius of the white dwarf.
 
-void Castro::volInBoundary (Real time, Real& vol_p, Real& vol_s, Real rho_cutoff, bool local)
+void Castro::volInBoundary (Real time, Real& vol_P, Real& vol_S, Real rho_cutoff, bool local)
 {
     BL_PROFILE("Castro::volInBoundary()");
 
+    using namespace wdmerger;
+    using namespace problem;
+
     BL_ASSERT(level == 0);
 
-    vol_p = 0.0;
-    vol_s = 0.0;
+    vol_P = 0.0;
+    vol_S = 0.0;
 
     for (int lev = 0; lev <= parent->finestLevel(); lev++) {
 
@@ -368,7 +425,7 @@ void Castro::volInBoundary (Real time, Real& vol_p, Real& vol_s, Real rho_cutoff
 
       Castro& c_lev = getLevel(lev);
 
-      const Real* dx = c_lev.geom.CellSize();
+      const auto dx = c_lev.geom.CellSizeArray();
       auto mf = c_lev.derive("density",time,0);
 
       // Effective potentials of the primary and secondary
@@ -388,174 +445,64 @@ void Castro::volInBoundary (Real time, Real& vol_p, Real& vol_s, Real rho_cutoff
 	  MultiFab::Multiply(*mfsmask, mask, 0, 0, 1, 0);
       }
 
-      Real vp = 0.0;
-      Real vs = 0.0;
+      ReduceOps<ReduceOpSum, ReduceOpSum> reduce_op;
+      ReduceData<Real, Real> reduce_data(reduce_op);
+      using ReduceTuple = typename decltype(reduce_data)::Type;
 
 #ifdef _OPENMP
-#pragma omp parallel reduction(+:vp,vs)
+#pragma omp parallel
 #endif
-      for (MFIter mfi(*mf,true); mfi.isValid(); ++mfi) {
-          FArrayBox& fab      = (*mf)[mfi];
-          FArrayBox& fabpmask = (*mfpmask)[mfi];
-          FArrayBox& fabsmask = (*mfsmask)[mfi];
-          FArrayBox& vol      = c_lev.volume[mfi];
+      for (MFIter mfi(*mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+          auto rho   = (*mf)[mfi].array();
+          auto pmask = (*mfpmask)[mfi].array();
+          auto smask = (*mfsmask)[mfi].array();
+          auto vol   = c_lev.volume[mfi].array();
 
 	  const Box& box  = mfi.tilebox();
-	  const int* lo   = box.loVect();
-	  const int* hi   = box.hiVect();
 
-#pragma gpu box(box)
-	  ca_volumeindensityboundary(BL_TO_FORTRAN_ANYD(fab),
-		                     BL_TO_FORTRAN_ANYD(fabpmask),
-				     BL_TO_FORTRAN_ANYD(fabsmask),
-				     BL_TO_FORTRAN_ANYD(vol),
-				     AMREX_INT_ANYD(lo), AMREX_INT_ANYD(hi),
-				     AMREX_REAL_ANYD(dx),
-                                     AMREX_MFITER_REDUCE_SUM(&vp), AMREX_MFITER_REDUCE_SUM(&vs),
-                                     rho_cutoff);
+          // This function uses the known center of mass of the two white dwarfs,
+          // and given a density cutoff, computes the total volume of all zones
+          // whose density is greater or equal to that density cutoff.
+          // We also impose a distance requirement so that we only look
+          // at zones within the Roche lobe of the white dwarf.
+
+          reduce_op.eval(box, reduce_data,
+          [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) -> ReduceTuple
+          {
+              Real primary_factor = 0.0_rt;
+              Real secondary_factor = 0.0_rt;
+
+              if (rho(i,j,k) > rho_cutoff) {
+
+                  if (pmask(i,j,k) > 0.0_rt) {
+
+                      primary_factor = 1.0_rt;
+
+                  }
+                  else if (smask(i,j,k) > 0.0_rt) {
+
+                      secondary_factor = 1.0_rt;
+
+                  }
+
+              }
+
+              return {vol(i,j,k) * primary_factor, vol(i,j,k) * secondary_factor};
+          });
 
       }
 
-      vol_p += vp;
-      vol_s += vs;
+      ReduceTuple hv = reduce_data.value();
+
+      vol_P += amrex::get<0>(hv);
+      vol_S += amrex::get<1>(hv);
 
     }
 
     if (!local)
-      amrex::ParallelDescriptor::ReduceRealSum({vol_p, vol_s});
+      amrex::ParallelDescriptor::ReduceRealSum({vol_P, vol_S});
 
     ca_set_amr_info(level, -1, -1, -1.0, -1.0);
-
-}
-
-
-
-//
-// Calculate the gravitational wave signal.
-//
-
-void
-Castro::gwstrain (Real time,
-		  Real& h_plus_1, Real& h_cross_1,
-		  Real& h_plus_2, Real& h_cross_2,
-		  Real& h_plus_3, Real& h_cross_3,
-		  bool local) {
-
-    BL_PROFILE("Castro::gwstrain()");
-
-    const Real* dx = geom.CellSize();
-
-    auto mfrho   = derive("density",time,0);
-    auto mfxmom  = derive("xmom",time,0);
-    auto mfymom  = derive("ymom",time,0);
-    auto mfzmom  = derive("zmom",time,0);
-    auto mfgravx = derive("grav_x",time,0);
-    auto mfgravy = derive("grav_y",time,0);
-    auto mfgravz = derive("grav_z",time,0);
-
-    BL_ASSERT(mfrho   != nullptr);
-    BL_ASSERT(mfxmom  != nullptr);
-    BL_ASSERT(mfymom  != nullptr);
-    BL_ASSERT(mfzmom  != nullptr);
-    BL_ASSERT(mfgravx != nullptr);
-    BL_ASSERT(mfgravy != nullptr);
-    BL_ASSERT(mfgravz != nullptr);
-
-    if (level < parent->finestLevel())
-    {
-	const MultiFab& mask = getLevel(level+1).build_fine_mask();
-
-	MultiFab::Multiply(*mfrho,   mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfxmom,  mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfymom,  mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfzmom,  mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfgravx, mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfgravy, mask, 0, 0, 1, 0);
-	MultiFab::Multiply(*mfgravz, mask, 0, 0, 1, 0);
-    }
-
-    // Qtt stores the second time derivative of the quadrupole moment.
-    // We calculate it directly rather than computing the quadrupole moment
-    // and differentiating it in time, because the latter method is less accurate
-    // and requires the state at other timesteps. See, e.g., Equation 5 of
-    // Loren-Aguilar et al. 2005.
-
-    // It is a 3x3 rank-2 tensor, but AMReX expects IntVect() to use BL_SPACEDIM
-    // dimensions, so we add a redundant third index in 3D.
-
-    Box bx( IntVect(D_DECL(0, 0, 0)), IntVect(D_DECL(2, 2, 0)) );
-
-    FArrayBox Qtt(bx);
-
-    Qtt.setVal(0.0);
-
-#ifdef _OPENMP
-    int nthreads = omp_get_max_threads();
-    Vector< std::unique_ptr<FArrayBox> > priv_Qtt(nthreads);
-    for (int i=0; i<nthreads; i++) {
-	priv_Qtt[i].reset(new FArrayBox(bx));
-    }
-#pragma omp parallel
-#endif
-    {
-#ifdef _OPENMP
-	int tid = omp_get_thread_num();
-	priv_Qtt[tid]->setVal(0.0);
-#endif
-	for (MFIter mfi(*mfrho,true); mfi.isValid(); ++mfi) {
-
-	    const Box& box  = mfi.tilebox();
-	    const int* lo   = box.loVect();
-	    const int* hi   = box.hiVect();
-
-#pragma gpu box(box)
-	    quadrupole_tensor_double_dot(BL_TO_FORTRAN_ANYD((*mfrho)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfxmom)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfymom)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfzmom)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfgravx)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfgravy)[mfi]),
-					 BL_TO_FORTRAN_ANYD((*mfgravz)[mfi]),
-					 BL_TO_FORTRAN_ANYD(volume[mfi]),
-					 AMREX_INT_ANYD(lo), AMREX_INT_ANYD(hi),
-                                         AMREX_REAL_ANYD(dx), time,
-#ifdef _OPENMP
-					 priv_Qtt[tid]->dataPtr()
-#else
-	                                 Qtt.dataPtr()
-#endif
-                                         );
-        }
-    }
-
-    // Do an OpenMP reduction on the tensor.
-
-#ifdef _OPENMP
-        int n = bx.numPts();
-	Real* p = Qtt.dataPtr();
-#pragma omp barrier
-#pragma omp for nowait
-	for (int i=0; i<n; ++i)
-	{
-	    for (int it=0; it<nthreads; it++) {
-		const Real* pq = priv_Qtt[it]->dataPtr();
-		p[i] += pq[i];
-	    }
-	}
-#endif
-
-    // Now, do a global reduce over all processes.
-
-    if (!local)
-	amrex::ParallelDescriptor::ReduceRealSum(Qtt.dataPtr(),bx.numPts());
-
-    // Now that we have the second time derivative of the quadrupole
-    // tensor, we can calculate the transverse-trace gauge strain tensor.
-
-    gw_strain_tensor(&h_plus_1, &h_cross_1,
-		     &h_plus_2, &h_cross_2,
-		     &h_plus_3, &h_cross_3,
-		     Qtt.dataPtr(), &time);
 
 }
 
@@ -575,17 +522,6 @@ Real Castro::dot_product(const Real a[], const Real b[]) {
 
 
 
-// Computes standard cross-product of two three-vectors.
-
-void Castro::cross_product(const Real a[], const Real b[], Real c[]) {
-
-  c[0] = a[1] * b[2] - a[2] * b[1];
-  c[1] = a[2] * b[0] - a[0] * b[2];
-  c[2] = a[0] * b[1] - a[1] * b[0];
-
-}
-
-
 
 // Computes norm of a three-vector.
 
@@ -601,9 +537,10 @@ Real Castro::norm(const Real a[]) {
 
 
 
-#ifdef DO_PROBLEM_POST_INIT
-
 void Castro::problem_post_init() {
+
+  using namespace wdmerger;
+  using namespace problem;
 
   // Read in inputs.
 
@@ -613,30 +550,6 @@ void Castro::problem_post_init() {
   pp.query("use_energy_stopping_criterion", use_energy_stopping_criterion);
   pp.query("ts_te_stopping_criterion", ts_te_stopping_criterion);
   pp.query("T_stopping_criterion", T_stopping_criterion);
-
-  // Get the problem number fom Fortran.
-
-  get_problem_number(&problem);
-
-  // Get the relaxation status.
-
-  get_relaxation_status(&relaxation_is_done);
-
-  // If we're doing an initial relaxation step, ensure that we are not subcycling.
-
-  if (problem == 1 && !relaxation_is_done && parent->subCycle() && parent->finestLevel() > 0)
-      amrex::Abort("Error: cannot perform relaxation step if we are sub-cycling in the AMR.");
-
-  // Update the rotational period; some problems change this from what's in the inputs parameters.
-
-  get_period(&rotational_period);
-
-  // Initialize the energy storage array.
-
-  for (int i = 0; i < num_previous_ener_timesteps; ++i)
-    total_ener_array[i] = -1.e200;
-
-  set_total_ener_array(total_ener_array);
 
   // Execute the post timestep diagnostics here,
   // so that the results at t = 0 and later are smooth.
@@ -647,13 +560,12 @@ void Castro::problem_post_init() {
 
 }
 
-#endif
 
-
-
-#ifdef DO_PROBLEM_POST_RESTART
 
 void Castro::problem_post_restart() {
+
+  using namespace wdmerger;
+  using namespace problem;
 
   // Read in inputs.
 
@@ -664,25 +576,7 @@ void Castro::problem_post_restart() {
   pp.query("ts_te_stopping_criterion", ts_te_stopping_criterion);
   pp.query("T_stopping_criterion", T_stopping_criterion);
 
-  // Get the problem number from Fortran.
-
-  get_problem_number(&problem);
-
-  // Get the relaxation status.
-
-  get_relaxation_status(&relaxation_is_done);
-
-  // Get the rotational period.
-
-  get_period(&rotational_period);
-
-  // Get the energy data from Fortran.
-
-  get_total_ener_array(total_ener_array);
-
-  // Get the extrema.
-
-  get_extrema(&T_global_max, &rho_global_max, &ts_te_global_max);
+  // Reset current values of extrema.
 
   T_curr_max = T_global_max;
   rho_curr_max = rho_global_max;
@@ -728,8 +622,6 @@ void Castro::problem_post_restart() {
 
 }
 
-#endif
-
 
 
 void Castro::writeGitHashes(std::ostream& log) {
@@ -748,136 +640,118 @@ void Castro::writeGitHashes(std::ostream& log) {
 
 void Castro::check_to_stop(Real time, bool dump) {
 
-    int jobDoneStatus;
-
-    // Get the current job done status.
-
-    get_job_status(&jobDoneStatus);
+    using namespace wdmerger;
+    using namespace problem;
 
     if (use_stopping_criterion) {
 
-      if (problem == 0) {
-
-          // Note that we don't want to use the following in 1D
-          // since we're not simulating gravitationally bound systems.
+        // Note that we don't want to use the following in 1D
+        // since we're not simulating gravitationally bound systems.
 
 #if BL_SPACEDIM > 1
-          if (use_energy_stopping_criterion) {
+        if (use_energy_stopping_criterion) {
 
-              // For the collision problem, we know we are done when the total energy
-              // is positive (indicating that we have become unbound due to nuclear
-              // energy release) and when it is decreasing in magnitude (indicating
-              // all of the excitement is done and fluid is now just streaming off
-              // the grid). We don't need to be super accurate for this, so let's check
-              // on the coarse grid only. It is possible that a collision could not
-              // generate enough energy to become unbound, so possibly this criterion
-              // should be expanded in the future to cover that case.
+            // For the collision problem, we know we are done when the total energy
+            // is positive (indicating that we have become unbound due to nuclear
+            // energy release) and when it is decreasing in magnitude (indicating
+            // all of the excitement is done and fluid is now just streaming off
+            // the grid). We don't need to be super accurate for this, so let's check
+            // on the coarse grid only. It is possible that a collision could not
+            // generate enough energy to become unbound, so possibly this criterion
+            // should be expanded in the future to cover that case.
 
-              Real rho_E = 0.0;
-              Real rho_phi = 0.0;
+            Real rho_E = 0.0;
+            Real rho_phi = 0.0;
 
-              // Note that we'll define the total energy using only
-              // gas energy + gravitational. Rotation is never on
-              // for the collision problem so we can ignore it.
+            // Note that we'll define the total energy using only
+            // gas energy + gravitational. Rotation is never on
+            // for the collision problem so we can ignore it.
 
-              Real E_tot = 0.0;
+            Real E_tot = 0.0;
 
-              Real curTime   = state[State_Type].curTime();
+            Real curTime   = state[State_Type].curTime();
 
-              bool local_flag = true;
-              bool fine_mask = false;
+            bool local_flag = true;
+            bool fine_mask = false;
 
-              rho_E += volWgtSum("rho_E", curTime,  local_flag, fine_mask);
+            rho_E += volWgtSum("rho_E", curTime,  local_flag, fine_mask);
 
 #ifdef GRAVITY
-              if (do_grav) {
-                  rho_phi += volWgtSum("rho_phiGrav", curTime,  local_flag, fine_mask);
-              }
+            if (do_grav) {
+                rho_phi += volWgtSum("rho_phiGrav", curTime,  local_flag, fine_mask);
+            }
 #endif
 
-              E_tot = rho_E + 0.5 * rho_phi;
+            E_tot = rho_E + 0.5 * rho_phi;
 
-              amrex::ParallelDescriptor::ReduceRealSum(E_tot);
+            amrex::ParallelDescriptor::ReduceRealSum(E_tot);
 
-              // Put this on the end of the energy array.
+            // Put this on the end of the energy array.
 
-              for (int i = num_previous_ener_timesteps - 1; i > 0; --i)
-                  total_ener_array[i] = total_ener_array[i - 1];
+            for (int i = num_previous_ener_timesteps - 1; i > 0; --i)
+                total_ener_array[i] = total_ener_array[i - 1];
 
-              total_ener_array[0] = E_tot;
+            total_ener_array[0] = E_tot;
 
-              // Send the data to Fortran.
+            bool stop_flag = false;
 
-              set_total_ener_array(total_ener_array);
+            int i = 0;
 
-              bool stop_flag = false;
+            // Check if energy is positive and has been decreasing for at least the last few steps.
 
-              int i = 0;
+            while (i < num_previous_ener_timesteps - 1) {
 
-              // Check if energy is positive and has been decreasing for at least the last few steps.
+                if (total_ener_array[i] < 0.0)
+                    break;
+                else if (total_ener_array[i] > total_ener_array[i + 1])
+                    break;
 
-              while (i < num_previous_ener_timesteps - 1) {
+                ++i;
 
-                  if (total_ener_array[i] < 0.0)
-                      break;
-                  else if (total_ener_array[i] > total_ener_array[i + 1])
-                      break;
+            }
 
-                  ++i;
+            if (i == num_previous_ener_timesteps - 1)
+                stop_flag = true;
 
-              }
+            if (stop_flag) {
 
-              if (i == num_previous_ener_timesteps - 1)
-                  stop_flag = true;
+                problem::jobIsDone = 1;
 
-              if (stop_flag) {
+                amrex::Print() << std::endl 
+                               << "Ending simulation because total energy is positive and decreasing." 
+                               << std::endl;
 
-                  jobDoneStatus = 1;
+            }
 
-                  set_job_status(&jobDoneStatus);
-
-                  amrex::Print() << std::endl 
-                                 << "Ending simulation because total energy is positive and decreasing." 
-                                 << std::endl;
-
-              }
-
-          }
+        }
 #endif
 
-          if (ts_te_curr_max >= ts_te_stopping_criterion) {
+        if (ts_te_curr_max >= ts_te_stopping_criterion) {
 
-              jobDoneStatus = 1;
+            problem::jobIsDone = 1;
 
-              set_job_status(&jobDoneStatus);
+            amrex::Print() << std::endl
+                           << "Ending simulation because we are above the threshold for unstable burning."
+                           << std::endl;
 
-              amrex::Print() << std::endl
-                             << "Ending simulation because we are above the threshold for unstable burning."
-                             << std::endl;
+        }
 
-          }
+        if (T_curr_max >= T_stopping_criterion) {
 
-          if (T_curr_max >= T_stopping_criterion) {
+            problem::jobIsDone = 1;
 
-              jobDoneStatus = 1;
+            amrex::Print() << std::endl
+                           << "Ending simulation because we are above the temperature threshold."
+                           << std::endl;
 
-              set_job_status(&jobDoneStatus);
+        }
 
-              amrex::Print() << std::endl
-                             << "Ending simulation because we are above the temperature threshold."
-                             << std::endl;
-
-          }
-
-      }
 
     }
 
     // Is the job done? If so, signal this to AMReX.
 
-    get_job_status(&jobDoneStatus);
-
-    if (jobDoneStatus == 1) {
+    if (problem::jobIsDone) {
 
       signalStopJob = true;
 
@@ -903,6 +777,9 @@ void Castro::check_to_stop(Real time, bool dump) {
 
 
 void Castro::update_extrema(Real time) {
+
+    using namespace wdmerger;
+    using namespace problem;
 
     // Compute extrema
 
@@ -960,10 +837,6 @@ void Castro::update_extrema(Real time) {
     rho_global_max   = std::max(rho_global_max, rho_curr_max);
     ts_te_global_max = std::max(ts_te_global_max, ts_te_curr_max);
 
-    // Send extrema data to Fortran
-
-    set_extrema(&T_global_max, &rho_global_max, &ts_te_global_max);
-
 }
 
 
@@ -971,38 +844,26 @@ void Castro::update_extrema(Real time) {
 void
 Castro::update_relaxation(Real time, Real dt) {
 
+    using namespace wdmerger;
+    using namespace problem;
+
     // Check to make sure whether we should be doing the relaxation here.
     // Update the relaxation conditions if we are not stopping.
 
-    if (problem != 1 || relaxation_is_done || mass_p <= 0.0 || mass_s <= 0.0 || dt <= 0.0) return;
+    if (problem::problem != 1 || relaxation_is_done || mass_P <= 0.0 || mass_S <= 0.0 || dt <= 0.0) return;
 
-    // Reconstruct the rotation force at the old and new times.
-    // For the old time we can simply use the old state data; for
-    // the new time, we need to reconstruct the state as it was
-    // before the new-time sources were applied, so we'll temporarily
-    // subtract off all the new-time sources before doing so.
-
-    // This process is technically incorrect if reactions are
-    // enabled. We reconstruct the new-time rotation force by
-    // subtracting the new-time sources, but ignore the fact that
-    // a Strang-split burn happened in between. We will not worry
-    // about this for two reasons: first, reactions are generally
-    // not going to be enabled during the relaxation step, and if
-    // they are enabled, they will contribute negligibly anyway
-    // since the relaxation step happens prior to the merger;
-    // second, the reactions do not directly affect the gravity
-    // or rotation source terms, so even if there were substantial
-    // reactions occurring, the error introduced by not accounting
-    // for them here would be small.
-
-    // Note that this process only really makes sense if we are
-    // not subcycling.
+    // Construct the update to the rotation frequency. We calculate
+    // the gravitational force at the end of the timestep, set the
+    // rotational force to be equal to it, and infer the required
+    // rotation frequency. Then we apply it so that the next timestep
+    // has an updated rotation force that is a better balance against
+    // the gravitational force.
 
     int coarse_level = 0;
     int finest_level = parent->finestLevel();
     int n_levs = finest_level + 1;
 
-    Vector< std::unique_ptr<MultiFab> > rot_force(n_levs);
+    Vector< std::unique_ptr<MultiFab> > force(n_levs);
 
     for (int lev = coarse_level; lev <= finest_level; ++lev) {
 
@@ -1011,38 +872,38 @@ Castro::update_relaxation(Real time, Real dt) {
 
         const Real dt = new_time - old_time;
 
-        rot_force[lev].reset(new MultiFab(getLevel(lev).grids, getLevel(lev).dmap, NUM_STATE, 0));
-        rot_force[lev]->setVal(0.0);
+        force[lev].reset(new MultiFab(getLevel(lev).grids, getLevel(lev).dmap, NUM_STATE, 0));
+        force[lev]->setVal(0.0);
 
-        MultiFab& S_old = getLevel(lev).get_old_data(State_Type);
         MultiFab& S_new = getLevel(lev).get_new_data(State_Type);
 
-        // Use the rot_force MultiFab as temporary data to hold the
-        // non-rotation forces that were applied during the step. The inspiration
-        // for this approach is the method of Rosswog, Speith & Wynn (2004)
-        // (which was in the context of neutron star mergers; it was extended
-        // to white dwarf mergers by Dan et al. (2011)). In that paper, the rotation
-        // force is calculated by exactly balancing against the gravitational and hydrodynamic
-        // forces. We will just use the gravitational force, since the desired equilibrium
-        // state is for the hydrodynamic forces to be zero.
+        // Store the non-rotation forces. The inspiration for this approach is
+        // the method of Rosswog, Speith & Wynn (2004) (which was in the context
+        // of neutron star mergers; it was extended to white dwarf mergers by Dan et al.
+        // (2011)). In that paper, the rotation force is calculated by exactly balancing
+        // against the gravitational and hydrodynamic forces. We will just use the
+        // gravitational force, since the desired equilibrium state is for the hydrodynamic
+        // forces to be zero.
 
-        getLevel(lev).construct_old_gravity_source(*rot_force[lev], S_old, old_time, dt);
-        getLevel(lev).construct_new_gravity_source(*rot_force[lev], S_old, S_new, new_time, dt);
+        // We'll use the "old" gravity source constructor, which is really just a first-order
+        // predictor for rho * g, and apply it at the new time.
+
+        getLevel(lev).construct_old_gravity_source(*force[lev], S_new, new_time, dt);
 
         // Mask out regions covered by fine grids.
 
         if (lev < parent->finestLevel()) {
             const MultiFab& mask = getLevel(lev+1).build_fine_mask();
             for (int n = 0; n < NUM_STATE; ++n)
-                MultiFab::Multiply(*rot_force[lev], mask, 0, n, 1, 0);
+                MultiFab::Multiply(*force[lev], mask, 0, n, 1, 0);
         }
 
     }
 
     // Construct omega from this.
 
-    Real force_p[3] = { 0.0 };
-    Real force_s[3] = { 0.0 };
+    Real force_P[3] = { 0.0 };
+    Real force_S[3] = { 0.0 };
 
     for (int lev = coarse_level; lev <= finest_level; ++lev) {
 
@@ -1053,62 +914,121 @@ Castro::update_relaxation(Real time, Real dt) {
 
         MultiFab& vol = getLevel(lev).Volume();
 
-        Real fpx = 0.0;
-        Real fpy = 0.0;
-        Real fpz = 0.0;
-        Real fsx = 0.0;
-        Real fsy = 0.0;
-        Real fsz = 0.0;
+        const int coord_type = geom.Coord();
+
+        const int* lo_bc = phys_bc.lo();
+
+        const bool symm_lo_x = (lo_bc[0] == Symmetry);
+        const bool symm_lo_y = (lo_bc[1] == Symmetry);
+        const bool symm_lo_z = (lo_bc[2] == Symmetry);
+
+        ReduceOps<ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum, ReduceOpSum> reduce_op;
+        ReduceData<Real, Real, Real, Real, Real, Real> reduce_data(reduce_op);
+        using ReduceTuple = typename decltype(reduce_data)::Type;
 
 #ifdef _OPENMP
-#pragma omp parallel reduction(+:fpx, fpy, fpz, fsx, fsy, fsz)
+#pragma omp parallel
 #endif
-        for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi) {
+        for (MFIter mfi(S_new, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
 
-            const Box& box = mfi.tilebox();
+            const Box& bx = mfi.tilebox();
 
-            const int* lo  = box.loVect();
-            const int* hi  = box.hiVect();
+            // Compute the sum of the hydrodynamic and gravitational forces acting on the WDs.
 
-#pragma gpu box(box)
-            sum_force_on_stars(AMREX_INT_ANYD(lo), AMREX_INT_ANYD(hi),
-                               BL_TO_FORTRAN_ANYD((*rot_force[lev])[mfi]),
-                               BL_TO_FORTRAN_ANYD(S_new[mfi]),
-                               BL_TO_FORTRAN_ANYD(vol[mfi]),
-                               BL_TO_FORTRAN_ANYD((*pmask)[mfi]),
-                               BL_TO_FORTRAN_ANYD((*smask)[mfi]),
-                               AMREX_MFITER_REDUCE_SUM(&fpx),
-                               AMREX_MFITER_REDUCE_SUM(&fpy),
-                               AMREX_MFITER_REDUCE_SUM(&fpz),
-                               AMREX_MFITER_REDUCE_SUM(&fsx),
-                               AMREX_MFITER_REDUCE_SUM(&fsy),
-                               AMREX_MFITER_REDUCE_SUM(&fsz));
+            Array4<Real const> const force_arr = (*force[lev]).array(mfi);
+            Array4<Real const> const vol_arr   = vol.array(mfi);
+            Array4<Real const> const pmask_arr = (*pmask).array(mfi);
+            Array4<Real const> const smask_arr = (*smask).array(mfi);
+
+            reduce_op.eval(bx, reduce_data,
+            [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) -> ReduceTuple
+            {
+                GpuArray<Real, 3> dF;
+                for (int n = 0; n < 3; ++n) {
+                    dF[n] = vol_arr(i,j,k) * force_arr(i,j,k,UMX+n);
+                }
+
+                // In the following we'll account for symmetry boundaries
+                // by assuming they're on the lower boundary if they do exist.
+                // In that case, assume the star's center is on the lower boundary.
+                // Then we need to double the value of the force in the other dimensions,
+                // and cancel out the force in that dimension.
+                // We assume here that only one dimension at most has a symmetry boundary.
+
+                if (coord_type == 0) {
+
+                    if (symm_lo_x) {
+                        dF[0] = 0.0_rt;
+                        dF[1] = 2.0_rt * dF[1];
+                        dF[2] = 2.0_rt * dF[2];
+                    }
+
+                    if (symm_lo_y) {
+                        dF[0] = 2.0_rt * dF[0];
+                        dF[1] = 0.0_rt;
+                        dF[2] = 2.0_rt * dF[2];
+                    }
+
+                    if (symm_lo_z) {
+                        dF[0] = 2.0_rt * dF[0];
+                        dF[1] = 2.0_rt * dF[1];
+                        dF[2] = 0.0_rt;
+                    }
+
+                } else if (coord_type == 1) {
+
+                    dF[0] = 0.0_rt;
+
+                }
+
+                Real primary_factor = 0.0_rt;
+                Real secondary_factor = 0.0_rt;
+
+                if (pmask_arr(i,j,k) > 0.0_rt) {
+
+                    primary_factor = 1.0_rt;
+
+                } else if (smask_arr(i,j,k) > 0.0_rt) {
+
+                    secondary_factor = 1.0_rt;
+
+                }
+
+                return {dF[0] * primary_factor,
+                        dF[1] * primary_factor,
+                        dF[2] * primary_factor,
+                        dF[0] * secondary_factor,
+                        dF[1] * secondary_factor,
+                        dF[2] * secondary_factor};
+            });
 
         }
 
-        force_p[0] += fpx;
-        force_p[1] += fpy;
-        force_p[2] += fpz;
+        ReduceTuple hv = reduce_data.value();
 
-        force_s[0] += fsx;
-        force_s[1] += fsy;
-        force_s[2] += fsz;
+        force_P[0] += amrex::get<0>(hv);
+        force_P[1] += amrex::get<1>(hv);
+        force_P[2] += amrex::get<2>(hv);
+
+        force_S[0] += amrex::get<3>(hv);
+        force_S[1] += amrex::get<4>(hv);
+        force_S[2] += amrex::get<5>(hv);
 
     }
 
     // Do the reduction over processors.
 
-    amrex::ParallelDescriptor::ReduceRealSum({force_p[0], force_p[1], force_p[2], force_s[0], force_s[1], force_s[2]});
+    amrex::ParallelDescriptor::ReduceRealSum({force_P[0], force_P[1], force_P[2], force_S[0], force_S[1], force_S[2]});
 
     // Divide by the mass of the stars to obtain the acceleration, and then get the new rotation frequency.
 
-    Real fp = std::sqrt(std::pow(force_p[0], 2) + std::pow(force_p[1], 2) + std::pow(force_p[2], 2));
-    Real fs = std::sqrt(std::pow(force_s[0], 2) + std::pow(force_s[1], 2) + std::pow(force_s[2], 2));
+    Real fp = std::sqrt(std::pow(force_P[0], 2) + std::pow(force_P[1], 2) + std::pow(force_P[2], 2));
+    Real fs = std::sqrt(std::pow(force_S[0], 2) + std::pow(force_S[1], 2) + std::pow(force_S[2], 2));
 
-    Real ap = std::sqrt(std::pow(com_p[0], 2) + std::pow(com_p[1], 2) + std::pow(com_p[2], 2));
-    Real as = std::sqrt(std::pow(com_s[0], 2) + std::pow(com_s[1], 2) + std::pow(com_s[2], 2));
+    Real ap = std::sqrt(std::pow(com_P[0], 2) + std::pow(com_P[1], 2) + std::pow(com_P[2], 2));
+    Real as = std::sqrt(std::pow(com_S[0], 2) + std::pow(com_S[1], 2) + std::pow(com_S[2], 2));
 
-    Real omega = 0.5 * ( std::sqrt((fp / mass_p) / ap) + std::sqrt((fs / mass_s) / as) );
+    Real omega = 0.5 * ( std::sqrt((fp / mass_P) / ap) + std::sqrt((fs / mass_S) / as) );
 
     Real period = 2.0 * M_PI / omega;
 
@@ -1119,7 +1039,6 @@ Castro::update_relaxation(Real time, Real dt) {
     }
 
     rotational_period = period;
-    set_period(&period);
 
     // Check to see whether the relaxation should be turned off.
     // Note that at present the following check is only done on the
@@ -1129,81 +1048,145 @@ Castro::update_relaxation(Real time, Real dt) {
     // For the merger problem, we're going to turn the relaxation off
     // when we've reached the L1 Lagrange point.
 
-    Real L1[3] = { -1.0e200 };
-    Real L2[3] = { -1.0e200 };
-    Real L3[3] = { -1.0e200 };
-
     // First, calculate the location of the L1 Lagrange point.
 
-    get_lagrange_points(mass_p, mass_s, com_p, com_s, L1, L2, L3);
+    GpuArray<Real, 3> L1, L2, L3;
+    get_lagrange_points(mass_P, mass_S, com_P, com_S, L1, L2, L3);
 
-    // Then, figure out the effective potential corresponding to that
-    // Lagrange point.
-
-    Real potential = 0.0;
+    const auto dx = geom.CellSizeArray();
+    GeometryData geomdata = geom.data();
 
     auto mfphieff = derive("phiEff", time, 0);
 
-#ifdef _OPENMP
-#pragma omp parallel reduction(+:potential)
-#endif
-    for (MFIter mfi(*mfphieff,true); mfi.isValid(); ++mfi) {
+    Real potential;
 
-        const Box& box = mfi.tilebox();
+    {
+        // Then, figure out the effective potential corresponding to that
+        // Lagrange point.
 
-        const int* lo  = box.loVect();
-        const int* hi  = box.hiVect();
-
-        get_critical_roche_potential(BL_TO_FORTRAN_ANYD((*mfphieff)[mfi]),
-                                     lo, hi, L1, &potential);
-
-    }
-
-    amrex::ParallelDescriptor::ReduceRealSum(potential);
-
-    // Now cycle through the grids and determine if any zones
-    // have crossed the density threshold outside the critical surface.
-
-    MultiFab& S_new = get_new_data(State_Type);
-
-    int is_done = 0;
+        ReduceOps<ReduceOpSum> reduce_op;
+        ReduceData<Real> reduce_data(reduce_op);
+        using ReduceTuple = typename decltype(reduce_data)::Type;
 
 #ifdef _OPENMP
-#pragma omp parallel reduction(+:is_done)
+#pragma omp parallel
 #endif
-    for (MFIter mfi(S_new,true); mfi.isValid(); ++mfi) {
+        for (MFIter mfi(*mfphieff, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
 
-        const Box& box  = mfi.tilebox();
+            const Box& bx = mfi.tilebox();
 
-        const int* lo   = box.loVect();
-        const int* hi   = box.hiVect();
+            Array4<Real const> const phiEff = (*mfphieff).array(mfi);
 
-        check_relaxation(BL_TO_FORTRAN_ANYD(S_new[mfi]),
-                         BL_TO_FORTRAN_ANYD((*mfphieff)[mfi]),
-                         ARLIM_3D(lo),ARLIM_3D(hi),
-                         &potential,&is_done);
+            // Determine the critical Roche potential at the Lagrange point L1.
+            // We will use a tri-linear interpolation that gets a contribution
+            // from all the zone centers that bracket the Lagrange point.
 
+            reduce_op.eval(bx, reduce_data,
+            [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) -> ReduceTuple
+            {
+                GpuArray<Real, 3> r;
+                position(i, j, k, geomdata, r);
+
+                for (int n = 0; n < 3; ++n) {
+                    r[n] -= L1[n];
+                }
+
+                // Scale r by dx (in dimensions we're actually simulating).
+
+                for (int n = 0; n < AMREX_SPACEDIM; ++n) {
+                    r[n] /= dx[n];
+                }
+                for (int n = AMREX_SPACEDIM; n < 3; ++n) {
+                    r[n] = 0.0_rt;
+                }
+
+                // We want a contribution from this zone if it is
+                // less than one zone width away from the Lagrange point.
+
+                Real dP = 0.0_rt;
+
+                if ((r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) < 1.0_rt) {
+                    dP = (1.0_rt - std::abs(r[0])) * (1.0_rt - std::abs(r[1])) * (1.0_rt - std::abs(r[2])) * phiEff(i,j,k);
+                }
+
+                return dP;
+
+            });
+
+        }
+
+        ReduceTuple hv = reduce_data.value();
+        potential = amrex::get<0>(hv);
+
+        amrex::ParallelDescriptor::ReduceRealSum(potential);
     }
 
-    amrex::ParallelDescriptor::ReduceIntSum(is_done);
+    {
+        // Now cycle through the grids and determine if any zones
+        // have crossed the density threshold outside the critical surface.
 
-    if (is_done > 0) {
-        relaxation_is_done = 1;
+        MultiFab& S_new = get_new_data(State_Type);
+
+        ReduceOps<ReduceOpSum> reduce_op;
+        ReduceData<Real> reduce_data(reduce_op);
+        using ReduceTuple = typename decltype(reduce_data)::Type;
+
+#ifdef _OPENMP
+#pragma omp parallel
+#endif
+        for (MFIter mfi(S_new, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+
+            const Box& bx = mfi.tilebox();
+
+            Array4<Real const> const u = S_new.array(mfi);
+            Array4<Real const> const phiEff = (*mfphieff).array(mfi);
+
+            // Check whether we should stop the initial relaxation.
+            // The criterion is that we're outside the critical Roche surface
+            // and the density is greater than a specified threshold.
+            // If so, set do_initial_relaxation to false, which will effectively
+            // turn off the external source terms.
+
+            reduce_op.eval(bx, reduce_data,
+            [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) -> ReduceTuple
+            {
+                Real done = 0.0_rt;
+
+                if (phiEff(i,j,k) > potential && u(i,j,k,URHO) > relaxation_density_cutoff) {
+                    done = 1.0_rt;
+                }
+
+                return done;
+            });
+
+        }
+
+        ReduceTuple hv = reduce_data.value();
+        Real is_done = amrex::get<0>(hv);
+
+        amrex::ParallelDescriptor::ReduceRealSum(is_done);
+
+        if (is_done > 0.0) {
+            relaxation_is_done = 1;
+            amrex::Print() << "Disabling relaxation at time " << time
+                           << "s because the critical density threshold has been passed."
+                           << std::endl;
+        }
+
     }
 
     // We can also turn off the relaxation if we've passed
     // a certain number of dynamical timescales.
 
-    Real relaxation_cutoff_time;
-    get_relaxation_cutoff_time(&relaxation_cutoff_time);
-
-    if (relaxation_cutoff_time > 0.0 && time > relaxation_cutoff_time * std::max(t_ff_p, t_ff_s)) {
+    if (relaxation_cutoff_time > 0.0 && time > relaxation_cutoff_time * std::max(t_ff_P, t_ff_S)) {
         relaxation_is_done = 1;
+        amrex::Print() << "Disabling relaxation at time " << time
+                       << "s because the maximum number of dynamical timescales has passed."
+                       << std::endl;
     }
 
     if (relaxation_is_done > 0) {
-	set_relaxation_status(&relaxation_is_done);
-	turn_off_relaxation(&time);
+	relaxation_damping_factor = -1.0;
     }
 
 }

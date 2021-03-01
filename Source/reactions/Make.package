@@ -1,6 +1,7 @@
 # sources used with reactions
 # this is included when USE_REACT = TRUE
 
+CEXE_headers += Castro_react.H
+
 CEXE_sources += Castro_react.cpp
-ca_F90EXE_sources += React_nd.F90
-ca_F90EXE_sources += react_util.F90
+CEXE_headers += Castro_react_util.H
