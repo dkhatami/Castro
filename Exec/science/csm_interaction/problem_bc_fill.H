@@ -47,6 +47,8 @@ void problem_bc_fill(int i, int j, int k,
 		
 		state(i,j,k,UFS) = problem::x_H*state(i,j,k,URHO);
 		state(i,j,k,UFS+1) = problem::x_He*state(i,j,k,URHO);
+		state(i,jk,UFS+2) = problem::x_C*state(i,j,k,URHO);
+		state(i,j,k,UFS+3) = problem::x_O*state(i,j,k,URHO);
 		state(i,j,k,UFX) = 0.5_rt*state(i,j,k,URHO);
 		state(i,j,k,UFX+1) = 2.0_rt*state(i,j,k,URHO);
 		state(i,j,k,UFX+2) = 1.0_rt*state(i,j,k,URHO);
